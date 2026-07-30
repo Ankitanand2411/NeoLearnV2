@@ -1,0 +1,226 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;1,14..32,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light: cream/off-white editorial */
+    --background: 40 15% 96%;
+    --foreground: 0 0% 6%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 6%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 6%;
+    --primary: 0 0% 6%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 40 10% 92%;
+    --secondary-foreground: 0 0% 6%;
+    --muted: 40 10% 92%;
+    --muted-foreground: 0 0% 44%;
+    --accent: 40 10% 90%;
+    --accent-foreground: 0 0% 6%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 88%;
+    --input: 0 0% 88%;
+    --ring: 0 0% 6%;
+    --radius: 1rem;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 0 0% 20%;
+    --sidebar-primary: 0 0% 6%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 40 10% 94%;
+    --sidebar-accent-foreground: 0 0% 6%;
+    --sidebar-border: 0 0% 90%;
+    --sidebar-ring: 0 0% 6%;
+    /* Design tokens */
+    --accent-green: 142 70% 45%;
+    --accent-green-fg: 0 0% 100%;
+  }
+
+  .dark {
+    /* Dark: near-black editorial with warm tint */
+    --background: 0 0% 5%;
+    --foreground: 0 0% 95%;
+    --card: 0 0% 9%;
+    --card-foreground: 0 0% 95%;
+    --popover: 0 0% 9%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 0 0% 95%;
+    --primary-foreground: 0 0% 5%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 50%;
+    --accent: 0 0% 14%;
+    --accent-foreground: 0 0% 95%;
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 95%;
+    --border: 0 0% 14%;
+    --input: 0 0% 14%;
+    --ring: 0 0% 80%;
+    --sidebar-background: 0 0% 6%;
+    --sidebar-foreground: 0 0% 80%;
+    --sidebar-primary: 0 0% 95%;
+    --sidebar-primary-foreground: 0 0% 5%;
+    --sidebar-accent: 0 0% 11%;
+    --sidebar-accent-foreground: 0 0% 90%;
+    --sidebar-border: 0 0% 12%;
+    --sidebar-ring: 0 0% 80%;
+    --accent-green: 142 60% 42%;
+    --accent-green-fg: 0 0% 100%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    font-size: 15px;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* ---- Scrollbar ---- */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
+
+/* ---- Focus ---- */
+button:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+}
+
+/* ---- Keyframes ---- */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.animate-fade-up    { animation: fade-up 0.5s cubic-bezier(0.16,1,0.3,1) both; }
+.animate-fade-in    { animation: fade-in 0.3s ease both; }
+.animate-slide-left { animation: slide-in-left 0.4s cubic-bezier(0.16,1,0.3,1) both; }
+
+/* Stagger delays */
+.delay-75  { animation-delay: 0.075s; }
+.delay-100 { animation-delay: 0.1s; }
+.delay-150 { animation-delay: 0.15s; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.3s; }
+.delay-400 { animation-delay: 0.4s; }
+
+/* ---- Design tokens ---- */
+.page-bg {
+  @apply min-h-screen bg-background;
+}
+
+/* Card: large rounded, editorial style */
+.card-base {
+  @apply bg-card border border-border rounded-2xl;
+}
+.card-elevated {
+  @apply bg-card border border-border rounded-2xl shadow-sm;
+}
+
+/* Pill tag */
+.pill {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium border border-border text-muted-foreground bg-muted tracking-wide whitespace-nowrap;
+}
+.pill-dark {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-foreground text-background tracking-wide whitespace-nowrap;
+}
+.pill-green {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium tracking-wide whitespace-nowrap;
+  background: hsl(var(--accent-green));
+  color: hsl(var(--accent-green-fg));
+}
+
+/* Arrow circle button */
+.btn-arrow {
+  @apply w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-foreground hover:text-background hover:border-foreground transition-all duration-200 shrink-0;
+}
+.btn-arrow-filled {
+  @apply w-8 h-8 rounded-full bg-foreground flex items-center justify-center text-background hover:opacity-75 transition-all duration-200 shrink-0;
+}
+
+/* Section label */
+.section-label {
+  @apply text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground;
+}
+
+/* Large editorial heading */
+.heading-display {
+  @apply text-4xl font-bold tracking-tight leading-tight text-foreground;
+}
+.heading-xl {
+  @apply text-2xl font-bold tracking-tight text-foreground;
+}
+
+/* Stat value */
+.stat-value {
+  @apply text-3xl font-bold tracking-tight text-foreground;
+}
+
+/* Nav active */
+.nav-link-active {
+  @apply bg-foreground text-background;
+}
+
+/* Progress bar */
+.progress-track {
+  @apply w-full h-1 bg-muted rounded-full overflow-hidden;
+}
+.progress-fill {
+  @apply h-full rounded-full;
+  background: hsl(var(--foreground));
+}
+
+/* Divider */
+.divider {
+  @apply border-t border-border;
+}
+
+/* Green accent */
+.text-accent-green {
+  color: hsl(var(--accent-green));
+}
+.bg-accent-green {
+  background: hsl(var(--accent-green));
+}
+
+/* Loading spinner */
+.spinner {
+  @apply w-5 h-5 border-2 border-foreground border-t-transparent rounded-full animate-spin;
+}
+.spinner-sm {
+  @apply w-4 h-4 border-2 border-foreground border-t-transparent rounded-full animate-spin;
+}
