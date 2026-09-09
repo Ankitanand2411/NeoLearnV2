@@ -1,6 +1,6 @@
 # NeoLearn — Socratic AI Adaptive Learning Engine
 
-A production-grade educational platform that transforms passive study into an interactive, character-driven dialogue with historical mentors. NeoLearn combines **historical mentor personas**, **Retrieval-Augmented Generation (RAG)**, **LangChain orchestration**, **LLM-as-Judge evaluation**, and **2-Parameter Logistic Item Response Theory (2PL IRT)** adaptive quizzing to guide students toward genuine understanding.
+A production-grade educational platform that transforms passive study into an interactive, character-driven dialogue with historical mentors. NeoLearn combines **historical mentor personas**, **Retrieval-Augmented Generation (RAG)**, **LangChain orchestration**, **LLM-as-Judge evaluation**, and **Item Response Theory (Rasch/1PL with a Bayesian ability update)** adaptive quizzing to guide students toward genuine understanding.
 
 ---
 
@@ -49,7 +49,7 @@ Once the user has conversed enough, they trigger the Evaluation phase.
 **3. The Adaptive Quiz Master Agent (Targeted Assessor)**
 To solidify learning, the user enters the quiz phase.
 *   **Context Sharing:** Agent 3 takes the exact JSON `gaps` identified by Agent 2.
-*   **Action:** It prompts the LLM to generate a dynamic, multiple-choice question designed specifically to test the user's weaknesses (the `gaps`). The difficulty of the question is mathematically calibrated using 2-Parameter Logistic Item Response Theory (2PL IRT) based on the user's mastery level.
+*   **Action:** It prompts the LLM to generate a dynamic, multiple-choice question designed specifically to test the user's weaknesses (the `gaps`). The difficulty of the question is chosen by an Item Response Theory model (Rasch/1PL): the band whose difficulty parameter is nearest the student's current ability estimate θ, and θ is updated after each answer with an Expected-A-Posteriori (Bayesian) step that scales with how surprising the answer was.
 *   **Fast-Path Checking:** When the user answers, the backend instantly verifies correct answers. If wrong, it uses the LLM to generate a targeted pedagogical correction.
 *   **Persistence:** The new IRT theta (mastery score) is asynchronously saved to Supabase, permanently updating the user's progress.
 
@@ -76,7 +76,7 @@ To solidify learning, the user enters the quiz phase.
 | LLM Orchestration | LangChain |
 | LLM Provider | Groq Cloud (LLaMA 3.x) |
 | Token Validation | PyJWT + dynamic JWKS (ES256/RS256) |
-| Logging | structlog (structured JSON) |
+| Logging | structlog (structured key-value logs) |
 | Containerization | Docker + docker-compose |
 
 ### Database & Infrastructure

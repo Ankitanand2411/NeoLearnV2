@@ -1,5 +1,6 @@
-from pydantic_settings import BaseSettings
 from typing import List
+
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -7,7 +8,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_SERVICE_KEY: str
     SUPABASE_JWT_SECRET: str
-    YOUTUBE_API_KEY: str
+    YOUTUBE_API_KEY: str | None = None  # not used by the backend; optional
     ALLOWED_ORIGINS: str = "http://localhost:5173"
     REDIS_URL: str | None = None
 

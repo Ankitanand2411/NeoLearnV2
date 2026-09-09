@@ -1,6 +1,6 @@
-from pydantic import BaseModel
-from typing import Optional, List
+from typing import List, Optional
 
+from pydantic import BaseModel
 
 # ─── Quiz Schemas ────────────────────────────────────────────────────────────
 
@@ -34,6 +34,9 @@ class EvaluateAnswerRequest(BaseModel):
     correct_answer: str
     mastery: float = 0.0
     theta: float = 0.0            # student's current ability estimate
+    # IRT difficulty (b) of the question being answered, as returned by /generate.
+    # Optional for backwards compatibility; if omitted the server derives b from theta.
+    difficulty_param: Optional[float] = None
 
 
 class EvaluationResult(BaseModel):

@@ -65,6 +65,7 @@ const AdaptiveQuiz = ({ topicId, topicTitle, onComplete, gaps, personaId }: Adap
         correct_answer: currentQuestion.correct_answer,
         mastery,
         theta,
+        difficulty_param: currentQuestion.difficulty_param,
       });
       setEvaluation(res.evaluation);
       setMastery(res.new_mastery);

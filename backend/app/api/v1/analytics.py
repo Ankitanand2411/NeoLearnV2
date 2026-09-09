@@ -1,10 +1,10 @@
+import structlog
 from fastapi import APIRouter, Depends, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-import structlog
 
-from app.core.security import get_current_user
 from app.core.database import get_supabase
+from app.core.security import get_current_user
 from app.models.schemas import LearningInsights
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])

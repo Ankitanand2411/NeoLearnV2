@@ -1,10 +1,11 @@
-from fastapi import HTTPException, Security, Depends
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+import base64
+
 import jwt
+import structlog
+from fastapi import Depends, HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import InvalidTokenError
 from jwt.jwks_client import PyJWKClient
-import base64
-import structlog
 
 from app.core.config import settings
 
@@ -23,7 +24,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Security(security))
     Raises 401 if token is invalid or expired.
     """
     token = credentials.credentials
-    
+
     try:
         header = jwt.get_unverified_header(token)
         alg = header.get("alg", "HS256")
@@ -47,11 +48,11 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Security(security))
             raise HTTPException(
                 status_code=401,
                 detail=f"Invalid or expired token. JWKS signature verification failed: {str(e_jwks)}"
-            )
+            ) from e_jwks
 
     # 2. Symmetric signature verification (HS256 using JWT Secret)
     secret = settings.SUPABASE_JWT_SECRET
-    
+
     try:
         # Try raw secret string
         return jwt.decode(
@@ -79,7 +80,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Security(security))
             raise HTTPException(
                 status_code=401,
                 detail="Invalid or expired token. Signature verification failed."
-            )
+            ) from e_b64
 
 
 def get_current_user(payload: dict = Depends(verify_token)) -> dict:
