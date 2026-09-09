@@ -8,6 +8,6 @@ slowapi==0.1.9
 supabase==2.5.1
 python-dotenv==1.0.1
 structlog==24.2.0
-langchain-core>=0.2.0
-langchain-groq>=0.1.0
+langchain-core>=1.0,<2
+langchain-groq>=1.0,<2
 redis>=5.0.0

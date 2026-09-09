@@ -1,22 +1,32 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
+import structlog
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-import structlog
 
-from app.core.security import get_current_user
 from app.core.database import get_supabase
+from app.core.security import get_current_user
 from app.models.schemas import (
-    GenerateQuestionRequest, GenerateQuestionResponse, QuizQuestion,
-    EvaluateAnswerRequest, EvaluateAnswerResponse, EvaluationResult,
+    EvaluateAnswerRequest,
+    EvaluateAnswerResponse,
+    EvaluationResult,
+    GenerateQuestionRequest,
+    GenerateQuestionResponse,
+    QuizQuestion,
 )
 from app.services import ai_service
+from app.services.ai_service import AIServiceError
 from app.services.mastery_service import (
-    select_difficulty, update_theta, theta_to_mastery, mastery_to_theta, DIFFICULTY_MAP
+    mastery_to_theta,
+    select_difficulty,
+    theta_to_mastery,
+    update_theta,
 )
 
 router = APIRouter(prefix="/quiz", tags=["Quiz"])
 limiter = Limiter(key_func=get_remote_address)
 log = structlog.get_logger()
+
+_UNAVAILABLE = "The quiz service is temporarily unavailable. Please try again in a moment."
 
 
 @router.post("/generate", response_model=GenerateQuestionResponse)
@@ -28,9 +38,9 @@ async def generate_question(
 ):
     """
     Generate an adaptive question using IRT-based difficulty selection.
-    
-    The difficulty is selected to maximize Fisher information at the
-    student's current ability estimate (theta).
+
+    The difficulty band is the one whose b is nearest the student's ability
+    estimate θ, which is where a logistic item is most informative.
     """
     theta = mastery_to_theta(body.mastery)
     difficulty_label, difficulty_param = select_difficulty(theta)
@@ -43,14 +53,18 @@ async def generate_question(
         difficulty=difficulty_label,
     )
 
-    raw = await ai_service.generate_question(
-        body.topic, difficulty_label, body.gaps, persona_id=body.persona_id
-    )
+    try:
+        generated = await ai_service.generate_question(
+            body.topic, difficulty_label, body.gaps, persona_id=body.persona_id
+        )
+    except AIServiceError as e:
+        log.error("question_generation_unavailable", user_id=user["id"], error=str(e))
+        raise HTTPException(status_code=503, detail=_UNAVAILABLE) from e
 
     question = QuizQuestion(
-        question=raw["question"],
-        options=raw["options"],
-        correct_answer=raw["correct_answer"],
+        question=generated.question,
+        options=generated.options,
+        correct_answer=generated.correct_answer,
         difficulty=difficulty_label,
         difficulty_param=difficulty_param,
     )
@@ -92,33 +106,38 @@ async def evaluate_answer(
 ):
     """
     Evaluate a student's answer and update their IRT ability estimate.
-    
+
     DB updates run as a background task so the API responds immediately.
     """
     log.info("evaluating_answer", user_id=user["id"], topic=body.topic)
 
-    evaluation_raw = await ai_service.evaluate_answer(
-        body.topic, body.question, body.answer, body.correct_answer
-    )
+    try:
+        verdict = await ai_service.evaluate_answer(
+            body.topic, body.question, body.answer, body.correct_answer
+        )
+    except AIServiceError as e:
+        log.error("answer_evaluation_unavailable", user_id=user["id"], error=str(e))
+        raise HTTPException(status_code=503, detail=_UNAVAILABLE) from e
 
-    is_correct = evaluation_raw.get("is_correct", False)
+    is_correct = verdict.is_correct
 
-    # IRT theta update
-    difficulty_param = DIFFICULTY_MAP.get(
-        "easy" if body.mastery < 0.33 else "intermediate" if body.mastery < 0.67 else "hard",
-        0.0
-    )
+    # Use the difficulty (b) of the question that was actually asked. Fall back
+    # to the same θ→band mapping /generate uses, so both endpoints agree.
+    if body.difficulty_param is not None:
+        difficulty_param = body.difficulty_param
+    else:
+        _, difficulty_param = select_difficulty(body.theta)
+
     new_theta = update_theta(body.theta, is_correct, difficulty_param)
     new_mastery = theta_to_mastery(new_theta)
 
     evaluation = EvaluationResult(
-        score=evaluation_raw.get("score", 1.0 if is_correct else 0.0),
-        feedback=evaluation_raw.get("feedback", ""),
-        correction=evaluation_raw.get("correction", ""),
+        score=verdict.score,
+        feedback=verdict.feedback,
+        correction=verdict.correction,
         is_correct=is_correct,
     )
 
-    # Persist to DB asynchronously — don't block the response
     background_tasks.add_task(
         _persist_evaluation,
         user["id"], body.topic_id, is_correct, new_mastery, db,

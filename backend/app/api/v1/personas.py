@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+
 from app.services.persona_registry import get_all_personas
 
 router = APIRouter(prefix="/personas", tags=["Personas"])

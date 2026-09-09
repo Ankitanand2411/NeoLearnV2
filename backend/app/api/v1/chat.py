@@ -1,14 +1,16 @@
-from fastapi import APIRouter, Depends, Request, BackgroundTasks
+from datetime import datetime
+
+import structlog
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-import structlog
-from datetime import datetime
 
-from app.core.security import get_current_user
 from app.core.database import get_supabase
-from app.models.schemas import ChatRequest, ChatEvaluateRequest, ChatEvaluateResponse
+from app.core.security import get_current_user
+from app.models.schemas import ChatEvaluateRequest, ChatEvaluateResponse, ChatRequest
 from app.services import ai_service
+from app.services.ai_service import AIServiceError
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 limiter = Limiter(key_func=get_remote_address)
@@ -21,7 +23,7 @@ def update_user_mastery_db(user_id: str, topic_id: str, score: float, history: l
         supabase_client = get_supabase()
         # Check if record exists
         response = supabase_client.table("user_mastery").select("*").eq("user_id", user_id).eq("topic_id", topic_id).execute()
-        
+
         if response.data:
             supabase_client.table("user_mastery").update({
                 "mastery_level": score,
@@ -35,7 +37,7 @@ def update_user_mastery_db(user_id: str, topic_id: str, score: float, history: l
                 "questions_attempted": 0,
                 "questions_correct": 0
             }).execute()
-        
+
         # Also trigger badge updates if score is high
         if score >= 0.9:
             supabase_client.table("user_badges").insert({
@@ -47,7 +49,7 @@ def update_user_mastery_db(user_id: str, topic_id: str, score: float, history: l
                 "user_id": user_id,
                 "badge_name": "Expert"
             }).execute()
-            
+
         log.info("user_mastery_updated_via_judge", user_id=user_id, topic_id=topic_id, score=score)
         # Save telemetry
         try:
@@ -60,7 +62,7 @@ def update_user_mastery_db(user_id: str, topic_id: str, score: float, history: l
             }).execute()
         except Exception as e:
             log.error("telemetry_log_failed", error=str(e))
-            
+
         # Save long-term memory
         gaps = eval_result.get("gaps", [])
         if gaps:
@@ -80,7 +82,7 @@ def update_user_mastery_db(user_id: str, topic_id: str, score: float, history: l
                     }).execute()
             except Exception as e:
                 log.error("memory_update_failed", error=str(e))
-            
+
     except Exception as e:
         log.error("user_mastery_update_failed", user_id=user_id, error=str(e))
 
@@ -140,27 +142,36 @@ async def evaluate_chat(
     Returns structured feedback (understood concepts, gaps) and saves mastery in DB.
     """
     log.info("chat_evaluation_request", user_id=user["id"], topic=body.topic)
-    
+
     # 1. Convert schema message history to dict list
     history_dicts = [{"role": msg.role, "content": msg.content} for msg in body.history]
-    
-    # 2. Run evaluation
-    result = await ai_service.evaluate_understanding(body.topic, history_dicts)
-    
+
+    # 2. Run evaluation. A model/schema failure is an honest 503, not a fake 0.5.
+    try:
+        verdict = await ai_service.evaluate_understanding(body.topic, history_dicts)
+    except AIServiceError as e:
+        log.error("llm_judge_unavailable", user_id=user["id"], topic=body.topic, error=str(e))
+        raise HTTPException(
+            status_code=503,
+            detail="Evaluation is temporarily unavailable. Please try again in a moment.",
+        ) from e
+
+    eval_result = verdict.model_dump()
+
     # 3. Schedule database update in background
     background_tasks.add_task(
         update_user_mastery_db,
         user_id=user["id"],
         topic_id=body.topic_id,
-        score=result.get("score", 0.5),
+        score=verdict.score,
         history=history_dicts,
-        eval_result=result
+        eval_result=eval_result,
     )
-    
+
     return ChatEvaluateResponse(
         success=True,
-        score=result.get("score", 0.5),
-        understood=result.get("understood", []),
-        gaps=result.get("gaps", []),
-        reasoning=result.get("reasoning", "Evaluation completed successfully.")
+        score=verdict.score,
+        understood=verdict.understood,
+        gaps=verdict.gaps,
+        reasoning=verdict.reasoning,
     )

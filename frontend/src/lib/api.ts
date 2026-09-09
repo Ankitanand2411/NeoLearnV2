@@ -77,6 +77,7 @@ export const quizApi = {
     correct_answer: string;
     mastery: number;
     theta: number;
+    difficulty_param?: number; // IRT b of the question being answered
   }) =>
     apiRequest<EvaluateAnswerResponse>('/quiz/evaluate', {
       method: 'POST',
