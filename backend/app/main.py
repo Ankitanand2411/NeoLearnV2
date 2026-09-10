@@ -1,3 +1,4 @@
+import time
 from contextlib import asynccontextmanager
 
 import structlog
@@ -7,9 +8,10 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.api.v1 import analytics, chat, personas, quiz, session
+from app.api.v1 import analytics, chat, metrics, personas, quiz, session
 from app.core.config import settings
 from app.graph.graph import build_graph
+from app.services.telemetry import telemetry
 
 # ─── Structured Logging ───────────────────────────────────────────────────────
 structlog.configure(
@@ -98,8 +100,14 @@ async def log_requests(request: Request, call_next):
     if request.method == "OPTIONS":
         return await call_next(request)
     log.info("request", method=request.method, path=request.url.path)
+    started = time.perf_counter()
     response = await call_next(request)
-    log.info("response", status=response.status_code, path=request.url.path)
+    latency_ms = (time.perf_counter() - started) * 1000
+    # The matched route template (e.g. /api/v1/session/{session_id}) is known
+    # after routing; fall back to the raw path when nothing matched (404s).
+    route = getattr(request.scope.get("route"), "path", request.url.path)
+    telemetry.record_request(route=route, method=request.method, status=response.status_code, latency_ms=latency_ms)
+    log.info("response", status=response.status_code, path=request.url.path, latency_ms=round(latency_ms, 1))
     return response
 
 
@@ -111,6 +119,7 @@ app.include_router(chat.router, prefix=API_PREFIX)
 app.include_router(analytics.router, prefix=API_PREFIX)
 app.include_router(personas.router, prefix=API_PREFIX)
 app.include_router(session.router, prefix=API_PREFIX)
+app.include_router(metrics.router, prefix=API_PREFIX)
 
 
 # ─── Health Check ─────────────────────────────────────────────────────────────

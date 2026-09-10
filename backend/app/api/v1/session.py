@@ -23,6 +23,7 @@ from slowapi.util import get_remote_address
 from app.core.security import get_current_user
 from app.graph.state import MIN_STUDENT_TURNS, PHASE_DONE, PHASE_QUIZ, PHASE_TUTOR, QUIZ_LENGTH
 from app.services.ai_service import AIServiceError
+from app.services.telemetry import begin_usage_capture
 
 router = APIRouter(prefix="/session", tags=["Session"])
 limiter = Limiter(key_func=get_remote_address)
@@ -107,6 +108,7 @@ def _view(session_id: str, snapshot) -> dict[str, Any]:
             "total": QUIZ_LENGTH,
             "answers": v.get("answers", []),
         },
+        "usage": v.get("usage") or {"llm_calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0},
     }
 
 
@@ -125,6 +127,7 @@ async def _resume(graph, config: dict, snapshot, value: dict):
     client can retry the same call.
     """
     payload = Command(resume=value) if _interrupt_payload(snapshot) is not None else None
+    begin_usage_capture()
     try:
         await graph.ainvoke(payload, config)
     except AIServiceError as e:
@@ -140,6 +143,7 @@ async def start_session(request: Request, body: StartSessionRequest, user: dict 
     graph = get_graph(request)
     session_id = uuid.uuid4().hex
     config = _config(user["id"], session_id)
+    begin_usage_capture()
     await graph.ainvoke(
         {
             "user_id": user["id"],
@@ -184,6 +188,7 @@ async def send_message(request: Request, session_id: str, body: MessageRequest, 
     config = _config(user["id"], session_id)
 
     async def event_stream():
+        begin_usage_capture()
         try:
             async for chunk, meta in graph.astream(
                 Command(resume={"message": body.message}), config, stream_mode="messages"

@@ -234,3 +234,31 @@ def test_continue_is_idempotent_when_nothing_pending(client, monkeypatch):
     sid = client.post("/api/v1/session/start", json=START).json()["session_id"]
     r = client.post(f"/api/v1/session/{sid}/continue")
     assert r.status_code == 200 and r.json()["student_turns"] == 0
+
+
+# ─── Telemetry surfaces ───────────────────────────────────────────────────────
+
+def test_session_view_accumulates_usage(client, monkeypatch):
+    install_fakes(monkeypatch)
+    sid = client.post("/api/v1/session/start", json=START).json()["session_id"]
+    assert client.get(f"/api/v1/session/{sid}").json()["usage"]["llm_calls"] == 0
+    talk(client, sid, 2)
+    usage = client.get(f"/api/v1/session/{sid}").json()["usage"]
+    assert usage["llm_calls"] == 2                     # one tutor call per turn
+    assert usage["prompt_tokens"] == 0                 # fake model reports no usage; counted honestly as 0
+    assert set(usage) == {"llm_calls", "prompt_tokens", "completion_tokens", "cost_usd"}
+
+
+def test_metrics_endpoint_reports_routes_and_llm_purposes(client, monkeypatch):
+    install_fakes(monkeypatch)
+    sid = client.post("/api/v1/session/start", json=START).json()["session_id"]
+    talk(client, sid, 1)
+
+    r = client.get("/api/v1/metrics")
+    assert r.status_code == 200
+    snap = r.json()
+    assert "tutor" in snap["llm"] and snap["llm"]["tutor"]["count"] >= 1
+    assert snap["llm"]["tutor"]["p95_ms"] is not None
+    assert "POST /api/v1/session/start" in snap["http"]
+    assert "POST /api/v1/session/{session_id}/message" in snap["http"]       # route template, not raw path
+    assert snap["llm_totals"]["calls"] >= 1

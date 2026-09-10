@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     MENTOR_EMBED_MODEL: str = "gemini-embedding-001"
     MENTOR_EMBED_DIMENSIONS: int = 768
 
+    # --- Cost estimation (USD per 1M tokens, by model) ---
+    # Defaults are Groq's published llama-3.1-8b-instant list prices at the time
+    # of writing. VERIFY against https://groq.com/pricing and override via env
+    # (JSON), e.g. LLM_PRICE_INPUT_PER_M='{"llama-3.1-8b-instant": 0.05}'.
+    LLM_PRICE_INPUT_PER_M: dict[str, float] = {"llama-3.1-8b-instant": 0.05, "default": 0.0}
+    LLM_PRICE_OUTPUT_PER_M: dict[str, float] = {"llama-3.1-8b-instant": 0.08, "default": 0.0}
+
     @property
     def origins(self) -> List[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
