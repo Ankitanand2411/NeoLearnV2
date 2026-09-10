@@ -69,8 +69,8 @@ const Profile = () => {
       if (error) throw error;
       toast.success('Profile saved');
       setIsEditing(false);
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to save');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save');
     }
   };
 

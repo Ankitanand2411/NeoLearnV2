@@ -36,8 +36,8 @@ const Login = () => {
         },
       });
       if (error) throw error;
-    } catch (error: any) {
-      toast.error(error.message || 'Google sign-in failed');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Google sign-in failed');
       setLoading(false);
     }
   };

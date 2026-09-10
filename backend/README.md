@@ -171,7 +171,7 @@ with an in-process fake. Coverage today:
 | `telemetry` | Nearest-rank percentiles, per-model cost table, usage normalisation, per-purpose and per-route aggregates, per-context capture + drain, state reducer, include_raw unpacking keeps token usage, parsing errors counted as errored attempts |
 | session routes | Start/get/ownership (404 for another user), SSE token stream + done event, 400 too early, 409 wrong phase, 503 then retry, full quiz over HTTP, `pending_step` + `/continue` recovery, auth required |
 
-CI runs the same two commands on every push/PR touching `backend/` (`.github/workflows/backend-ci.yml`).
+CI runs the same two commands on every push/PR (`.github/workflows/backend-ci.yml`); `frontend-ci.yml` type-checks, lints and builds the frontend. Both are required checks on `main`. Python is pinned to 3.12 via `backend/.python-version` (Render honours it; the Dockerfile pins its own base image).
 
 ## Known limitations (next up)
 

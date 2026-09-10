@@ -43,15 +43,16 @@ export default function Leaderboard() {
 
         if (!profiles || profiles.length === 0) { setLeaders([]); setLoading(false); return; }
 
-        const map = new Map();
-        profiles.forEach((p: any) => map.set(p.user_id, { ...p, total: 0, count: 0 }));
-        masteryData?.forEach((m: any) => {
+        type Row = { user_id: string; username?: string | null; full_name?: string | null; avatar?: string | null; avatar_url?: string | null; total: number; count: number };
+        const map = new Map<string, Row>();
+        profiles.forEach((p) => map.set(p.user_id, { ...p, total: 0, count: 0 }));
+        masteryData?.forEach((m) => {
           const u = map.get(m.user_id);
           if (u) { u.total += m.mastery_level; u.count += 1; }
         });
 
         const result = Array.from(map.values())
-          .map((u: any) => ({ user_id: u.user_id, username: u.username, full_name: u.full_name, avatar: u.avatar, avatar_url: u.avatar_url, avg_mastery: u.count > 0 ? u.total / u.count : 0 }))
+          .map((u) => ({ user_id: u.user_id, username: u.username, full_name: u.full_name, avatar: u.avatar, avatar_url: u.avatar_url, avg_mastery: u.count > 0 ? u.total / u.count : 0 }))
           .sort((a, b) => b.avg_mastery - a.avg_mastery)
           .slice(0, 5);
         setLeaders(result);
