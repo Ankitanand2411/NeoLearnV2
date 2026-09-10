@@ -162,6 +162,39 @@ def get_topic_context(topic_name: str) -> dict:
 
 # ─── Streaming Socratic Chat ───────────────────────────────────────────────────
 
+def build_tutor_messages(
+    message: str,
+    topic: str,
+    mastery: float,
+    history: list,
+    persona_id: str | None = None,
+    past_memory: str | None = None,
+) -> tuple[list[BaseMessage], str]:
+    """
+    Assemble the LangChain message list for one tutor turn.
+
+    Shared by the legacy /chat stream and the session graph's tutor node so the
+    prompt cannot drift between them. Returns (messages, resolved_persona_id).
+    """
+    rag_context = get_topic_context(topic)
+    resolved_persona_id = persona_id or rag_context.get("mentor_id") or "feynman"
+    system_prompt = build_persona_system_prompt(
+        persona_id=resolved_persona_id,
+        topic=topic,
+        rag_context=rag_context,
+        mastery=mastery,
+        past_memory=past_memory,
+    )
+    messages: list[BaseMessage] = [SystemMessage(content=system_prompt)]
+    for msg in history[-8:]:  # last 4 turns (8 messages)
+        if msg["role"] == "user":
+            messages.append(HumanMessage(content=msg["content"]))
+        else:
+            messages.append(AIMessage(content=msg["content"]))
+    messages.append(HumanMessage(content=message))
+    return messages, resolved_persona_id
+
+
 async def stream_tutor_response(
     message: str,
     topic: str,
@@ -180,31 +213,8 @@ async def stream_tutor_response(
     4. LangChain message list construction
     5. ChatGroq astream — yields SSE frames to the frontend
     """
-    rag_context = get_topic_context(topic)
-    resolved_persona_id = persona_id or rag_context.get("mentor_id") or "feynman"
-
-    log.info(
-        "stream_chat_start",
-        topic=topic,
-        persona=resolved_persona_id,
-        mastery=round(mastery, 3),
-    )
-
-    system_prompt = build_persona_system_prompt(
-        persona_id=resolved_persona_id,
-        topic=topic,
-        rag_context=rag_context,
-        mastery=mastery,
-        past_memory=past_memory,
-    )
-
-    messages: list[BaseMessage] = [SystemMessage(content=system_prompt)]
-    for msg in history[-8:]:   # last 4 turns (8 messages)
-        if msg["role"] == "user":
-            messages.append(HumanMessage(content=msg["content"]))
-        else:
-            messages.append(AIMessage(content=msg["content"]))
-    messages.append(HumanMessage(content=message))
+    messages, resolved_persona_id = build_tutor_messages(message, topic, mastery, history, persona_id, past_memory)
+    log.info("stream_chat_start", topic=topic, persona=resolved_persona_id, mastery=round(mastery, 3))
 
     try:
         llm = _make_llm(temperature=0.7)

@@ -11,12 +11,11 @@ Three things are faked:
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.v1 import chat as chat_module
 from app.core.database import get_supabase
 from app.core.security import get_current_user
 from app.main import app
 from app.models.ai_schemas import AnswerVerdict, GeneratedQuestion, JudgeVerdict
-from app.services import ai_service
+from app.services import ai_service, persistence
 from app.services.ai_service import AIServiceError
 from app.services.mastery_service import DIFFICULTY_MAP, mastery_to_theta, update_theta
 
@@ -27,8 +26,8 @@ TEST_USER = {"id": "user-abc", "email": "test@example.com"}
 def client(fake_db, monkeypatch):
     app.dependency_overrides[get_current_user] = lambda: TEST_USER
     app.dependency_overrides[get_supabase] = lambda: fake_db
-    # chat.py calls get_supabase() directly inside its background task
-    monkeypatch.setattr(chat_module, "get_supabase", lambda: fake_db)
+    # persistence.py calls get_supabase() directly inside background tasks
+    monkeypatch.setattr(persistence, "get_supabase", lambda: fake_db)
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
