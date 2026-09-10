@@ -16,6 +16,8 @@ out of its own memory.
 import operator
 from typing import Annotated, Any, TypedDict
 
+from app.services.telemetry import add_usage
+
 QUIZ_LENGTH = 5
 MIN_STUDENT_TURNS = 3
 
@@ -52,6 +54,9 @@ class SessionState(TypedDict, total=False):
 
     # the value the client supplied to resume the last interrupt
     resume: dict[str, Any] | None
+
+    # LLM usage accumulated over the session (tokens, calls, estimated cost)
+    usage: Annotated[dict[str, Any], add_usage]
 
 
 def public_question(question: dict[str, Any]) -> dict[str, Any]:

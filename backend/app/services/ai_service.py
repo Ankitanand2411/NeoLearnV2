@@ -23,6 +23,7 @@ and injects it into the system prompt before every LLM call. The persona layer
 """
 
 import json
+import time
 from typing import TypeVar
 
 import structlog
@@ -35,6 +36,7 @@ from app.core.database import get_supabase
 from app.models.ai_schemas import AnswerVerdict, GeneratedQuestion, JudgeVerdict
 from app.services import mentor_rag
 from app.services.persona_registry import build_persona_system_prompt, get_persona
+from app.services.telemetry import telemetry, timer, usage_from_message
 
 log = structlog.get_logger()
 
@@ -71,7 +73,24 @@ def _structured_llm(schema: type[SchemaT], temperature: float):
     Kept as a separate seam so tests can swap in a fake model without touching
     the retry logic below.
     """
-    return _make_llm(temperature).with_structured_output(schema, method=STRUCTURED_METHOD)
+    # include_raw=True returns {"raw": AIMessage, "parsed": schema | None, "parsing_error": ...}
+    # so token usage on the raw message survives parsing.
+    return _make_llm(temperature).with_structured_output(schema, method=STRUCTURED_METHOD, include_raw=True)
+
+
+def _unpack_structured(result, schema: type[SchemaT]) -> tuple[SchemaT, dict]:
+    """Accept both include_raw dicts and bare results (tests / other methods)."""
+    usage = {"prompt_tokens": 0, "completion_tokens": 0, "reported": False}
+    if isinstance(result, dict) and "raw" in result and "parsed" in result:
+        usage = usage_from_message(result["raw"])
+        if result.get("parsing_error") is not None:
+            raise ValueError(f"structured output did not match schema: {result['parsing_error']}")
+        result = result["parsed"]
+        if result is None:
+            raise ValueError("structured output was empty")
+    if not isinstance(result, schema):
+        result = schema.model_validate(result)
+    return result, usage
 
 
 async def _invoke_structured(
@@ -94,15 +113,20 @@ async def _invoke_structured(
     for attempt in range(1, attempts + 1):
         try:
             runnable = _structured_llm(schema, temperature)
-            result = await runnable.ainvoke(messages)
-            if not isinstance(result, schema):
-                # Defensive: some methods can hand back a dict when include_raw is set.
-                result = schema.model_validate(result)
+            with timer() as t:
+                raw = await runnable.ainvoke(messages)
+            result, usage = _unpack_structured(raw, schema)
+            telemetry.record_llm_call(purpose=purpose, model=GROQ_MODEL, usage=usage, latency_ms=t.ms)
             if attempt > 1:
                 log.info("structured_output_repaired", purpose=purpose, attempt=attempt)
             return result
         except Exception as e:  # noqa: BLE001 — any failure means "retry or give up"
             last_error = e
+            telemetry.record_llm_call(
+                purpose=purpose, model=GROQ_MODEL,
+                usage={"prompt_tokens": 0, "completion_tokens": 0, "reported": False},
+                latency_ms=0.0, error=True,
+            )
             log.warning(
                 "structured_output_attempt_failed",
                 purpose=purpose,
@@ -223,10 +247,21 @@ async def stream_tutor_response(
 
     try:
         llm = _make_llm(temperature=0.7)
+        started = time.perf_counter()
+        first_token_ms = None
+        final_chunk = None
         async for chunk in llm.astream(messages):
+            if first_token_ms is None:
+                first_token_ms = (time.perf_counter() - started) * 1000
+            final_chunk = chunk if final_chunk is None else final_chunk + chunk
             token = chunk.content
             if token:
                 yield f"data: {json.dumps({'token': token})}\n\n"
+        telemetry.record_llm_call(
+            purpose="tutor_stream", model=GROQ_MODEL, usage=usage_from_message(final_chunk),
+            latency_ms=(time.perf_counter() - started) * 1000,
+        )
+        log.info("tutor_stream_ttft", ttft_ms=round(first_token_ms or 0, 1))
         yield "data: [DONE]\n\n"
     except Exception as e:
         log.error("langchain_stream_failed", error=str(e))

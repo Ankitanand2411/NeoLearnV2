@@ -97,6 +97,7 @@ Visit: http://localhost:8080/docs
 | `GEMINI_API_KEY` | Google AI Studio key, used only for embeddings (`gemini-embedding-001`). Optional: without it mentor-passage retrieval is skipped. |
 | `MENTOR_RAG_MODE` | `hybrid` (default: vector + keyword, RRF-fused), `vector`, or `off` |
 | `MENTOR_RAG_TOP_K` | Passages injected per tutor turn (default 3) |
+| `LLM_PRICE_INPUT_PER_M` / `LLM_PRICE_OUTPUT_PER_M` | JSON map of model → USD per 1M tokens for cost estimates. Defaults are Groq's list prices for `llama-3.1-8b-instant` at the time of writing; verify against groq.com/pricing. |
 | `SUPABASE_DB_URL` | Postgres connection string for the LangGraph checkpointer (Settings → Database → Connection string, URI). Use the direct connection or the **session** pooler on port 5432, not the transaction pooler (6543). Optional: without it sessions are checkpointed in memory and lost on restart. |
 
 ## Endpoints
@@ -115,6 +116,38 @@ Visit: http://localhost:8080/docs
 | POST | `/api/v1/chat` | JWT | *Legacy* streaming tutor |
 | POST | `/api/v1/chat/evaluate` | JWT | *Legacy* judge |
 | GET | `/api/v1/analytics/insights` | JWT | Learning analytics |
+
+## Numbers
+
+Every LLM call and HTTP request is measured (`app/services/telemetry.py`):
+
+- **Per session**: `GET /api/v1/session/{id}` includes `usage` — LLM calls, prompt/completion tokens and estimated cost accumulated in graph state, so it survives restarts.
+- **Per process**: `GET /api/v1/metrics` (JWT) — by purpose (`tutor`, `llm_judge`, `question_generation`, `answer_evaluation`, `tutor_stream`): count, p50/p95/max latency, tokens, `usage_reported_ratio`, cost; by route: count, p50/p95, 5xx count. In-memory, resets on restart, and says so.
+- **Logs**: one `llm_call` line per call (purpose, model, tokens, latency, cost) and `latency_ms` on every `response` line; the legacy stream also logs `tutor_stream_ttft` (time to first token).
+
+How to produce the numbers for this section:
+
+```bash
+# 1. complete 5 real sessions in the app, then
+curl -H "Authorization: Bearer $JWT" https://<backend>/api/v1/metrics | jq '.llm, .http'
+curl -H "Authorization: Bearer $JWT" https://<backend>/api/v1/session/<id> | jq .usage
+
+# 2. throughput / latency of the checkpointed path, no model cost
+python scripts/load_test.py --base https://<backend> --token $JWT --users 10 --requests 20
+
+# 3. retrieval quality (after ingesting sources)
+python scripts/eval_retrieval.py --compare
+```
+
+<!-- Paste results here, e.g.:
+| Metric | Value |
+|---|---|
+| Tokens per completed session (tutor + judge + 5 questions + 5 gradings) | … prompt / … completion |
+| Estimated cost per session | $… |
+| tutor p95 latency | … ms |
+| POST /session/start p95 (10 concurrent users) | … ms |
+| mentor RAG recall@3 / MRR (hybrid vs vector) | … |
+-->
 
 ## Tests
 
@@ -137,6 +170,7 @@ with an in-process fake. Coverage today:
 | routes | `/quiz/generate`, `/quiz/evaluate`, `/chat/evaluate` happy paths, 503 on model failure, background persistence calls, auth required |
 | session graph | Interrupt payloads, turn accounting, evaluate guard, judge → quiz transition, answer key never in an interrupt payload, five-answer completion with θ movement, failure leaves the graph parked before the failed node, resume across a new graph instance on the same checkpointer, thread isolation |
 | `mentor_rag` | Gutenberg boilerplate stripping, chunk size/overlap/coverage, hybrid vs vector RPC selection, fail-open on off/k=0/no mentor/blank query/no key/embedding error/RPC error, prompt block present only with passages and placed before the Socratic rules, tutor messages carry retrieved passages, golden-set recall@k and MRR, migration ⇄ code contract |
+| `telemetry` | Nearest-rank percentiles, per-model cost table, usage normalisation, per-purpose and per-route aggregates, per-context capture + drain, state reducer, include_raw unpacking keeps token usage, parsing errors counted as errored attempts |
 | session routes | Start/get/ownership (404 for another user), SSE token stream + done event, 400 too early, 409 wrong phase, 503 then retry, full quiz over HTTP, `pending_step` + `/continue` recovery, auth required |
 
 CI runs the same two commands on every push/PR touching `backend/` (`.github/workflows/backend-ci.yml`).

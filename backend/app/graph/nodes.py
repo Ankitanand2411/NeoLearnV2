@@ -31,6 +31,7 @@ from app.services.mastery_service import (
     theta_to_mastery,
     update_theta_eap,
 )
+from app.services.telemetry import drain_usage, telemetry, timer, usage_from_message
 
 log = structlog.get_logger()
 
@@ -86,7 +87,9 @@ async def tutor_reply(state: SessionState) -> dict:
         persona_id=state.get("persona_id"),
         past_memory=state.get("past_memory"),
     )
-    reply = await ai_service._make_llm(temperature=0.7).ainvoke(lc_messages)
+    with timer() as t:
+        reply = await ai_service._make_llm(temperature=0.7).ainvoke(lc_messages)
+    telemetry.record_llm_call(purpose="tutor", model=ai_service.GROQ_MODEL, usage=usage_from_message(reply), latency_ms=t.ms)
     content = reply.content if isinstance(reply.content, str) else str(reply.content)
     return {
         "messages": [
@@ -96,6 +99,7 @@ async def tutor_reply(state: SessionState) -> dict:
         "student_turns": state.get("student_turns", 0) + 1,
         "persona_id": persona_id,
         "resume": None,
+        "usage": drain_usage(),
     }
 
 
@@ -118,6 +122,7 @@ async def judge(state: SessionState) -> dict:
         "phase": PHASE_QUIZ,
         "quiz_index": 0,
         "resume": None,
+        "usage": drain_usage(),
     }
 
 
@@ -136,7 +141,7 @@ async def quiz_generate(state: SessionState) -> dict:
         "difficulty": label,
         "difficulty_param": b,
     }
-    return {"questions": [question], "resume": None}
+    return {"questions": [question], "resume": None, "usage": drain_usage()}
 
 
 async def await_answer(state: SessionState) -> dict:
@@ -176,6 +181,7 @@ async def grade_answer(state: SessionState) -> dict:
         "mastery": theta_to_mastery(new_theta),
         "quiz_index": current["index"] + 1,
         "resume": None,
+        "usage": drain_usage(),
     }
 
 
