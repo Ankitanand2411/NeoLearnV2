@@ -4,7 +4,7 @@ NeoLearn AI Service
 All LangChain + Groq LLM calls live here.
 
 Architecture:
-  stream_tutor_response  → ChatGroq (astream) with persona-fused system prompt
+  build_tutor_messages   → persona + curriculum + mentor passages for one tutor turn (graph node streams it)
   evaluate_understanding → ChatGroq structured output, acting as LLM-as-Judge
   generate_question      → ChatGroq structured output for IRT-targeted MCQ generation
   evaluate_answer        → ChatGroq structured output for answer scoring
@@ -22,8 +22,6 @@ and injects it into the system prompt before every LLM call. The persona layer
 (persona_registry.py) wraps that context with the historical mentor's voice.
 """
 
-import json
-import time
 from typing import TypeVar
 
 import structlog
@@ -185,7 +183,7 @@ def get_topic_context(topic_name: str) -> dict:
     }
 
 
-# ─── Streaming Socratic Chat ───────────────────────────────────────────────────
+# ─── Tutor turn ───────────────────────────────────────────────────────────────
 
 async def build_tutor_messages(
     message: str,
@@ -198,8 +196,7 @@ async def build_tutor_messages(
     """
     Assemble the LangChain message list for one tutor turn.
 
-    Shared by the legacy /chat stream and the session graph's tutor node so the
-    prompt cannot drift between them. Two retrieval steps feed the prompt:
+    Used by the session graph's tutor node. Two retrieval steps feed the prompt:
     the curriculum row (deterministic anchor) and the mentor's own passages
     (semantic/hybrid, optional). Returns (messages, resolved_persona_id).
     """
@@ -222,51 +219,6 @@ async def build_tutor_messages(
             messages.append(AIMessage(content=msg["content"]))
     messages.append(HumanMessage(content=message))
     return messages, resolved_persona_id
-
-
-async def stream_tutor_response(
-    message: str,
-    topic: str,
-    mastery: float,
-    history: list,
-    persona_id: str | None = None,
-    past_memory: str | None = None,
-):
-    """
-    Async generator: streams Socratic AI tutor tokens via LangChain + ChatGroq.
-
-    Pipeline:
-    1. Retrieval from Supabase (topic curriculum)
-    2. Persona resolution (from persona_registry or topic's mentor_id)
-    3. Fused system prompt build (persona voice + curriculum + mastery level)
-    4. LangChain message list construction
-    5. ChatGroq astream — yields SSE frames to the frontend
-    """
-    messages, resolved_persona_id = await build_tutor_messages(message, topic, mastery, history, persona_id, past_memory)
-    log.info("stream_chat_start", topic=topic, persona=resolved_persona_id, mastery=round(mastery, 3))
-
-    try:
-        llm = _make_llm(temperature=0.7)
-        started = time.perf_counter()
-        first_token_ms = None
-        final_chunk = None
-        async for chunk in llm.astream(messages):
-            if first_token_ms is None:
-                first_token_ms = (time.perf_counter() - started) * 1000
-            final_chunk = chunk if final_chunk is None else final_chunk + chunk
-            token = chunk.content
-            if token:
-                yield f"data: {json.dumps({'token': token})}\n\n"
-        telemetry.record_llm_call(
-            purpose="tutor_stream", model=GROQ_MODEL, usage=usage_from_message(final_chunk),
-            latency_ms=(time.perf_counter() - started) * 1000,
-        )
-        log.info("tutor_stream_ttft", ttft_ms=round(first_token_ms or 0, 1))
-        yield "data: [DONE]\n\n"
-    except Exception as e:
-        log.error("langchain_stream_failed", error=str(e))
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
-        yield "data: [DONE]\n\n"
 
 
 # ─── LLM-as-Judge Evaluation ──────────────────────────────────────────────────

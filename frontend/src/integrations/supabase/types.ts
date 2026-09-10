@@ -92,6 +92,7 @@ export type Database = {
           icon: string | null
           id: string
           key_takeaway: string | null
+          mentor_id: string | null
           prerequisites: string[] | null
           quiz_correct_answer: string | null
           quiz_options: string[] | null
@@ -107,6 +108,7 @@ export type Database = {
           icon?: string | null
           id?: string
           key_takeaway?: string | null
+          mentor_id?: string | null
           prerequisites?: string[] | null
           quiz_correct_answer?: string | null
           quiz_options?: string[] | null
@@ -122,6 +124,7 @@ export type Database = {
           icon?: string | null
           id?: string
           key_takeaway?: string | null
+          mentor_id?: string | null
           prerequisites?: string[] | null
           quiz_correct_answer?: string | null
           quiz_options?: string[] | null

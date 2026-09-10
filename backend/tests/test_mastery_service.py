@@ -21,7 +21,6 @@ from app.services.mastery_service import (
     theta_to_mastery,
     update_theta,
     update_theta_eap,
-    update_theta_newton,
 )
 
 INTERIOR_THETAS = [t / 10 for t in range(-24, 25)]  # -2.4 … 2.4
@@ -118,7 +117,18 @@ def test_eap_is_symmetric_for_rasch():
     assert up == pytest.approx(-down, abs=1e-9)
 
 
-# ─── Legacy Newton update (kept to document the bug) ──────────────────────────
+# ─── Legacy Newton update (reference copy; documents the bug that motivated EAP) ─
+
+def update_theta_newton(theta: float, is_correct: bool, b: float) -> float:
+    """The pre-EAP estimator, verbatim: one Newton step on one response, clipped to ±0.5."""
+    p = irt_probability(theta, b)
+    info = p * (1 - p)
+    if info < 1e-6:
+        return theta
+    delta = ((1.0 if is_correct else 0.0) - p) / info
+    delta = max(min(delta, 0.5), -0.5)
+    return max(min(theta + delta, THETA_MAX), THETA_MIN)
+
 
 @pytest.mark.parametrize("theta", INTERIOR_THETAS)
 @pytest.mark.parametrize("b", DIFFICULTY_MAP.values())

@@ -21,8 +21,8 @@ The original implementation took a single Newton–Raphson step on the
 log-likelihood of ONE response and clipped it to ±0.5. For a single Bernoulli
 observation the raw step is  (y - p) / (p(1 - p)) , whose magnitude is
 1/(1-p) or 1/p, i.e. always ≥ 1, so the clip always dominated and every update
-was exactly ±0.5 regardless of how surprising the response was
-(`update_theta_newton` is kept below for tests and comparison).
+was exactly ±0.5 regardless of how surprising the response was. The tests keep
+a reference copy of that estimator to document the bug.
 
 `update_theta` now uses an Expected-A-Posteriori (EAP) estimate on a grid:
 prior N(θ_prev, PRIOR_SD²) × likelihood of the observed response, then the
@@ -118,23 +118,6 @@ def update_theta(theta: float, is_correct: bool, b: float, a: float = DEFAULT_DI
     """Update ability after one response (EAP). Kept as the public entry point."""
     new_theta, _ = update_theta_eap(theta, is_correct, b, a)
     return new_theta
-
-
-def update_theta_newton(theta: float, is_correct: bool, b: float) -> float:
-    """
-    Legacy single-step Newton–Raphson update, clipped to ±0.5.
-
-    Retained only for comparison and tests: for one response the raw step is
-    always ≥ 1 in magnitude, so this returns θ ± 0.5 for every interior θ.
-    """
-    p = irt_probability(theta, b)
-    info = p * (1 - p)
-    if info < 1e-6:
-        return theta
-    residual = (1.0 if is_correct else 0.0) - p
-    delta = residual / info
-    delta = max(min(delta, 0.5), -0.5)
-    return _clamp(theta + delta)
 
 
 def theta_to_mastery(theta: float) -> float:
