@@ -3,7 +3,6 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from app.core.database import get_supabase
 from app.core.security import get_current_user
 from app.models.schemas import (
     EvaluateAnswerRequest,
@@ -21,6 +20,7 @@ from app.services.mastery_service import (
     theta_to_mastery,
     update_theta,
 )
+from app.services.persistence import persist_quiz_answer
 
 router = APIRouter(prefix="/quiz", tags=["Quiz"])
 limiter = Limiter(key_func=get_remote_address)
@@ -72,29 +72,6 @@ async def generate_question(
     return GenerateQuestionResponse(success=True, question=question, theta=theta)
 
 
-async def _persist_evaluation(
-    user_id: str,
-    topic_id: str,
-    is_correct: bool,
-    new_mastery: float,
-    db,
-):
-    """Background task — update mastery + streak in Supabase."""
-    try:
-        db.rpc("update_mastery_level", {
-            "user_uuid": user_id,
-            "topic_uuid": topic_id,
-            "is_correct": is_correct,
-        }).execute()
-
-        if is_correct:
-            db.rpc("update_user_streak", {"user_uuid": user_id}).execute()
-
-        log.info("mastery_persisted", user_id=user_id, topic_id=topic_id, new_mastery=new_mastery)
-    except Exception as e:
-        log.error("mastery_persist_failed", error=str(e))
-
-
 @router.post("/evaluate", response_model=EvaluateAnswerResponse)
 @limiter.limit("30/minute")
 async def evaluate_answer(
@@ -102,7 +79,6 @@ async def evaluate_answer(
     body: EvaluateAnswerRequest,
     background_tasks: BackgroundTasks,
     user: dict = Depends(get_current_user),
-    db=Depends(get_supabase),
 ):
     """
     Evaluate a student's answer and update their IRT ability estimate.
@@ -138,10 +114,7 @@ async def evaluate_answer(
         is_correct=is_correct,
     )
 
-    background_tasks.add_task(
-        _persist_evaluation,
-        user["id"], body.topic_id, is_correct, new_mastery, db,
-    )
+    background_tasks.add_task(persist_quiz_answer, user["id"], body.topic_id, is_correct)
 
     return EvaluateAnswerResponse(
         success=True,

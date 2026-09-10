@@ -22,7 +22,7 @@ import { toast } from 'sonner';
 import type { Topic } from '@/types/Topic';
 import AdaptiveQuiz from '@/components/AdaptiveQuiz';
 import ThemeToggle from '@/components/ThemeToggle';
-import { streamChat, chatApi } from '@/lib/api';
+import { sessionApi, type SessionView } from '@/lib/api';
 
 const STEPS = [
   { label: 'Socratic Dialogue', icon: MessageSquare },
@@ -67,6 +67,7 @@ const TopicPlayer = () => {
 
   // Evaluation / Judge State
   const [evaluating, setEvaluating] = useState(false);
+  const [session, setSession] = useState<SessionView | null>(null);
   const [evalResult, setEvalResult] = useState<{
     score: number;
     understood: string[];
@@ -93,10 +94,21 @@ const TopicPlayer = () => {
           .single();
           
         if (topicData) {
+          // `mentor_id` exists in the database but not yet in the generated Supabase types.
+          const mentorId = (topicData as unknown as { mentor_id?: string | null }).mentor_id ?? null;
           setTopic({ ...topicData, estimated_time: 30 });
           setUserMasteryLevel(masteryData?.mastery_level || 0);
 
-          const mentorName = PERSONAS[topicData.mentor_id || '']?.name || 'Your Mentor';
+          // The learning session (tutor → judge → quiz) lives on the server now.
+          const started = await sessionApi.start({
+            topic_id: topicData.id,
+            topic: topicData.title,
+            persona_id: mentorId,
+            mastery: masteryData?.mastery_level || 0,
+          });
+          setSession(started);
+
+          const mentorName = PERSONAS[mentorId || '']?.name || 'Your Mentor';
           
           // Seed initial Tutor message
           setMessages([
@@ -125,7 +137,7 @@ const TopicPlayer = () => {
   }, [messages, isTyping]);
 
   const handleSendMessage = async () => {
-    if (!inputMsg.trim() || isTyping || !topic) return;
+    if (!inputMsg.trim() || isTyping || !topic || !session) return;
     const userMsgText = inputMsg.trim();
     setInputMsg('');
     
@@ -139,62 +151,45 @@ const TopicPlayer = () => {
 
     try {
       let accumulatedToken = '';
-      await streamChat(
-        userMsgText,
-        topic.title,
-        topic.id,
-        userMasteryLevel,
-        // Send history without the last placeholder empty assistant response
-        updatedHistory,
-        (token) => {
-          accumulatedToken += token;
-          setMessages((prev) => {
-            const next = [...prev];
-            if (next.length > 0) {
-              next[next.length - 1] = {
-                role: 'assistant',
-                content: accumulatedToken,
-              };
-            }
-            return next;
-          });
-        },
-        () => {
-          setIsTyping(false);
-        },
-        topic.mentor_id
-      );
-    } catch (err: any) {
-      toast.error('Failed to get response from Socratic Tutor.');
+      const done = await sessionApi.streamMessage(session.session_id, userMsgText, (token) => {
+        accumulatedToken += token;
+        setMessages((prev) => {
+          const next = [...prev];
+          if (next.length > 0) {
+            next[next.length - 1] = { role: 'assistant', content: accumulatedToken };
+          }
+          return next;
+        });
+      });
+      setSession((prev) => prev ? { ...prev, student_turns: done.student_turns, can_evaluate: done.can_evaluate } : prev);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to get response from Socratic Tutor.');
+      // Drop the empty assistant placeholder so the transcript matches the server.
+      setMessages((prev) => (prev.length && prev[prev.length - 1].content === '' ? prev.slice(0, -1) : prev));
+    } finally {
       setIsTyping(false);
     }
   };
 
   const handleRunEvaluation = async () => {
-    if (!topic || messages.length < 3 || evaluating) return;
+    if (!topic || !session || !session.can_evaluate || evaluating) return;
     setEvaluating(true);
     setCurrentStep(1); // Move to Evaluation step
-    
+
     try {
-      const res = await chatApi.evaluate({
-        topic: topic.title,
-        topic_id: topic.id,
-        history: messages,
-      });
-      if (res.success) {
-        setEvalResult({
-          score: res.score,
-          understood: res.understood,
-          gaps: res.gaps,
-          reasoning: res.reasoning,
-        });
-        setUserMasteryLevel(res.score);
-        toast.success('AI evaluation completed successfully!');
-      } else {
-        throw new Error('Evaluation field missing success flag');
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Evaluation failed. Please try again.');
+      // If a previous attempt failed mid-way the server has a pending step; /continue finishes it.
+      const view = session.pending_step
+        ? await sessionApi.continue(session.session_id)
+        : await sessionApi.evaluate(session.session_id);
+      if (!view.verdict) throw new Error('Evaluation did not produce a verdict');
+      setSession(view);
+      setEvalResult(view.verdict);
+      setUserMasteryLevel(view.mastery);
+      toast.success('AI evaluation completed successfully!');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Evaluation failed. Please try again.');
+      // Refresh so we know whether the server is holding a pending step for retry.
+      try { setSession(await sessionApi.get(session.session_id)); } catch { /* keep local state */ }
       setCurrentStep(0); // bounce back to chat
     } finally {
       setEvaluating(false);
@@ -273,8 +268,8 @@ const TopicPlayer = () => {
   }
 
   const progress = ((currentStep + 1) / STEPS.length) * 100;
-  const userRepliesCount = messages.filter((m) => m.role === 'user').length;
-  const canEvaluate = userRepliesCount >= 3;
+  const userRepliesCount = session?.student_turns ?? 0;
+  const canEvaluate = session?.can_evaluate ?? false;
 
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
@@ -639,13 +634,13 @@ const TopicPlayer = () => {
                 exit={{ opacity: 0, y: -8 }}
                 className="max-w-2xl mx-auto w-full"
               >
-                <AdaptiveQuiz
-                  topicId={topic.id}
-                  topicTitle={topic.title}
-                  onComplete={handleQuizComplete}
-                  gaps={evalResult?.gaps || []}
-                  personaId={topic.mentor_id}
-                />
+                {session && (
+                  <AdaptiveQuiz
+                    session={session}
+                    onSessionUpdate={(view) => { setSession(view); setUserMasteryLevel(view.mastery); }}
+                    onComplete={handleQuizComplete}
+                  />
+                )}
               </motion.div>
             )}
           </AnimatePresence>

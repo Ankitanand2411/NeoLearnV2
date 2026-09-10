@@ -77,6 +77,7 @@ To solidify learning, the user enters the quiz phase.
 | LLM Provider | Groq Cloud (LLaMA 3.x) |
 | Token Validation | PyJWT + dynamic JWKS (ES256/RS256) |
 | Logging | structlog (structured key-value logs) |
+| Session orchestration | LangGraph StateGraph with Postgres checkpointing (human-in-the-loop interrupts) |
 | Containerization | Docker + docker-compose |
 
 ### Database & Infrastructure

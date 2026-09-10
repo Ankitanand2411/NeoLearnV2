@@ -1,90 +1,67 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { quizApi, type QuizQuestion, type EvaluationResult } from '@/lib/api';
+import { sessionApi, type SessionView, type GradedAnswer } from '@/lib/api';
 
-interface AdaptiveQuizProps { topicId: string; topicTitle: string; onComplete: (newMastery: number) => void; gaps?: string[]; personaId?: string; }
+/**
+ * Adaptive quiz driven entirely by the server-side session.
+ *
+ * The component receives the current SessionView (which carries the public
+ * question, mastery and progress) and reports back updated views. It never
+ * holds the correct answer: grading happens on the server and the answer key
+ * arrives only inside `evaluation` after the student has committed.
+ */
+interface AdaptiveQuizProps {
+  session: SessionView;
+  onSessionUpdate: (view: SessionView) => void;
+  onComplete: (newMastery: number) => void;
+}
 
-const AdaptiveQuiz = ({ topicId, topicTitle, onComplete, gaps, personaId }: AdaptiveQuizProps) => {
-  const { user } = useAuth();
-  const [currentQuestion, setCurrentQuestion] = useState<QuizQuestion | null>(null);
+const AdaptiveQuiz = ({ session, onSessionUpdate, onComplete }: AdaptiveQuizProps) => {
   const [selectedAnswer, setSelectedAnswer] = useState('');
-  const [mastery, setMastery] = useState(0.0);
-  const [theta, setTheta] = useState(0.0);           // IRT ability estimate
-  const [questionsAnswered, setQuestionsAnswered] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [evaluation, setEvaluation] = useState<GradedAnswer | null>(null);
   const [showResult, setShowResult] = useState(false);
+  const [pendingView, setPendingView] = useState<SessionView | null>(null);
 
-  useEffect(() => { fetchUserMastery(); }, [topicId, user]);
-
-  const fetchUserMastery = async () => {
-    if (!user) return;
-    try {
-      const { data } = await supabase
-        .from('user_mastery')
-        .select('mastery_level')
-        .eq('user_id', user.id)
-        .eq('topic_id', topicId)
-        .single();
-      const current = data?.mastery_level || 0;
-      setMastery(current);
-      generateQuestion(current);
-    } catch {
-      generateQuestion(0);
-    }
-  };
-
-  const generateQuestion = async (masteryLevel: number) => {
-    setLoading(true);
-    try {
-      const res = await quizApi.generateQuestion(topicTitle, masteryLevel, topicId, gaps, personaId);
-      setCurrentQuestion(res.question);
-      setTheta(res.theta);
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to generate question');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const currentQuestion = session.question;
+  const mastery = session.mastery;
+  const questionsAnswered = session.quiz.answers.length;
+  const total = session.quiz.total;
 
   const submitAnswer = async () => {
-    if (!selectedAnswer || !currentQuestion || !user) { toast.error('Select an answer'); return; }
+    if (!selectedAnswer || !currentQuestion) { toast.error('Select an answer'); return; }
     setLoading(true);
     try {
-      const res = await quizApi.evaluateAnswer({
-        topic: topicTitle,
-        topic_id: topicId,
-        question: currentQuestion.question,
-        answer: selectedAnswer,
-        correct_answer: currentQuestion.correct_answer,
-        mastery,
-        theta,
-        difficulty_param: currentQuestion.difficulty_param,
-      });
-      setEvaluation(res.evaluation);
-      setMastery(res.new_mastery);
-      setTheta(res.new_theta);
+      const res = await sessionApi.answer(session.session_id, selectedAnswer);
+      setEvaluation(res.evaluation ?? null);
+      setPendingView(res);                       // holds the next question until the student clicks Next
       setShowResult(true);
-      setQuestionsAnswered((p) => p + 1);
-      if (res.evaluation.is_correct) toast.success(res.evaluation.feedback);
-      else toast.error(res.evaluation.feedback);
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to evaluate answer');
+      if (res.evaluation?.is_correct) toast.success(res.evaluation.feedback);
+      else if (res.evaluation) toast.error(res.evaluation.feedback);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to evaluate answer');
     } finally {
       setLoading(false);
     }
   };
 
   const nextQuestion = () => {
-    if (questionsAnswered >= 5) { onComplete(mastery); return; }
+    if (!pendingView) return;
     setSelectedAnswer(''); setEvaluation(null); setShowResult(false);
-    generateQuestion(mastery);
+    if (pendingView.completed) { onComplete(pendingView.mastery); return; }
+    onSessionUpdate(pendingView);
+    setPendingView(null);
+  };
+
+  const recover = async () => {
+    setLoading(true);
+    try { onSessionUpdate(await sessionApi.continue(session.session_id)); }
+    catch (e) { toast.error(e instanceof Error ? e.message : 'Could not resume the quiz'); }
+    finally { setLoading(false); }
   };
 
   const LEVEL_COLORS: Record<string, string> = {
@@ -93,10 +70,11 @@ const AdaptiveQuiz = ({ topicId, topicTitle, onComplete, gaps, personaId }: Adap
     hard: 'text-red-600 dark:text-red-400',
   };
 
-  if (loading && !currentQuestion) {
+  if (!currentQuestion) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="w-5 h-5 border-2 border-foreground border-t-transparent rounded-full animate-spin" />
+      <div className="flex flex-col items-center justify-center gap-3 py-12">
+        <p className="text-sm text-muted-foreground">The next question could not be prepared.</p>
+        <Button onClick={recover} disabled={loading} size="sm">{loading ? 'Retrying…' : 'Try again'}</Button>
       </div>
     );
   }
@@ -111,7 +89,7 @@ const AdaptiveQuiz = ({ topicId, topicTitle, onComplete, gaps, personaId }: Adap
             <p className="text-2xl font-bold text-foreground">{Math.round(mastery * 100)}%</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-muted-foreground mb-0.5">Question {Math.min(questionsAnswered + 1, 5)} of 5</p>
+            <p className="text-xs text-muted-foreground mb-0.5">Question {Math.min(questionsAnswered + 1, total)} of {total}</p>
             <p className={`text-xs font-medium capitalize ${LEVEL_COLORS[currentQuestion?.difficulty ?? 'easy'] || ''}`}>
               {currentQuestion?.difficulty ?? 'loading'}
             </p>
@@ -126,7 +104,7 @@ const AdaptiveQuiz = ({ topicId, topicTitle, onComplete, gaps, personaId }: Adap
           />
         </div>
         <div className="w-full h-1 bg-muted rounded-full overflow-hidden mt-1.5">
-          <div className="h-full bg-muted-foreground/30 rounded-full" style={{ width: `${(questionsAnswered / 5) * 100}%` }} />
+          <div className="h-full bg-muted-foreground/30 rounded-full" style={{ width: `${(questionsAnswered / total) * 100}%` }} />
         </div>
         <div className="flex justify-between mt-1">
           <span className="text-[10px] text-muted-foreground">Mastery level</span>
@@ -136,7 +114,7 @@ const AdaptiveQuiz = ({ topicId, topicTitle, onComplete, gaps, personaId }: Adap
 
       {/* Question */}
       {currentQuestion && (
-        <motion.div key={questionsAnswered} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card-base p-5">
+        <motion.div key={currentQuestion.index} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card-base p-5">
           <p className="text-sm font-semibold text-foreground mb-4 leading-relaxed">{currentQuestion.question}</p>
 
           <RadioGroup value={selectedAnswer} onValueChange={setSelectedAnswer} className="space-y-2">
@@ -195,7 +173,7 @@ const AdaptiveQuiz = ({ topicId, topicTitle, onComplete, gaps, personaId }: Adap
                 onClick={nextQuestion}
                 className="flex-1 h-9 bg-foreground text-background hover:bg-foreground/90 text-sm"
               >
-                {questionsAnswered >= 5 ? 'Complete quiz' : 'Next question'}
+                {pendingView?.completed ? 'Complete quiz' : 'Next question'}
               </Button>
             )}
           </div>
