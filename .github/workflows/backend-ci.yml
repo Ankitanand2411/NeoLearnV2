@@ -1,17 +1,9 @@
 name: backend-ci
 
 # Runs lint + unit/contract tests for the FastAPI backend on every push and PR
-# that touches it. No secrets are needed: tests/conftest.py sets fake env vars
+# (no path filter, so it can be a required status check). No secrets are needed: tests/conftest.py sets fake env vars
 # and every external service (Groq, Supabase, Redis) is replaced with a fake.
-on:
-  push:
-    paths:
-      - "backend/**"
-      - ".github/workflows/backend-ci.yml"
-  pull_request:
-    paths:
-      - "backend/**"
-      - ".github/workflows/backend-ci.yml"
+on: [push, pull_request]
 
 jobs:
   test:
