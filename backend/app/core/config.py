@@ -18,6 +18,15 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:5173"
     REDIS_URL: str | None = None
 
+    # --- Mentor RAG (retrieval over the mentors' own public-domain writings) ---
+    # Embeddings come from Gemini (Groq has no embedding models). Without a key
+    # retrieval is skipped and the tutor prompt is unchanged.
+    GEMINI_API_KEY: str | None = None
+    MENTOR_RAG_MODE: str = "hybrid"        # hybrid | vector | off
+    MENTOR_RAG_TOP_K: int = 3
+    MENTOR_EMBED_MODEL: str = "gemini-embedding-001"
+    MENTOR_EMBED_DIMENSIONS: int = 768
+
     @property
     def origins(self) -> List[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]

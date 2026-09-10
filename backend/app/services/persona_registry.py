@@ -295,6 +295,7 @@ def build_persona_system_prompt(
     rag_context: dict,
     mastery: float,
     past_memory: str | None = None,
+    passages: list[dict] | None = None,
 ) -> str:
     """
     Build the complete LangChain system prompt by fusing:
@@ -302,6 +303,7 @@ def build_persona_system_prompt(
     2. RAG-retrieved curriculum context (grounding layer)
     3. Student mastery level (adaptive layer)
     4. Socratic rules (behavioral constraint layer)
+    5. Retrieved passages from the mentor's own writings (voice layer, optional)
 
     This is the core of the Applied AI pipeline.
     """
@@ -333,6 +335,18 @@ def build_persona_system_prompt(
         f"Use this context to gently adapt your teaching today.\n\n"
     ) if past_memory else ""
 
+    passages_block = ""
+    if passages:
+        from app.services.mentor_rag import format_passages
+
+        passages_block = (
+            "=== FROM YOUR OWN WRITINGS (retrieved for this turn) ===\n"
+            "Draw on these for voice, examples and analogies. You may quote at most one short "
+            "phrase and, if you do, name the source. Do not lecture from them: keep the student "
+            "constructing the idea.\n"
+            f"{format_passages(passages)}\n\n"
+        )
+
     return (
         f"=== WHO YOU ARE ===\n"
         f"{persona['system_voice']}\n\n"
@@ -352,6 +366,7 @@ def build_persona_system_prompt(
         f"Adaptive guidance: {mastery_guidance}\n\n"
 
         f"{memory_guidance}"
+        f"{passages_block}"
 
         f"=== SOCRATIC RULES YOU MUST FOLLOW ===\n"
         f"1. NEVER give direct answers or complete explanations — the student must construct knowledge.\n"
