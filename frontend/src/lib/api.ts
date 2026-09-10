@@ -76,6 +76,8 @@ export interface SessionView {
   verdict: SessionVerdict | null;
   question: PublicQuestion | null;
   quiz: { index: number; total: number; answers: GradedAnswer[] };
+  usage: { llm_calls: number; prompt_tokens: number; completion_tokens: number; cost_usd: number };
+  completion: { badges_awarded: string[]; completed_topics: number } | null;
   evaluation?: GradedAnswer | null;
 }
 

@@ -86,3 +86,47 @@ async def fetch_past_memory(user_id: str, topic_id: str | None) -> str | None:
     except Exception as e:
         log.error("memory_fetch_failed", user_id=user_id, topic_id=topic_id, error=str(e))
     return None
+
+
+BADGE_MASTER = 0.9
+BADGE_EXPERT = 0.7
+
+
+async def persist_completion(user_id: str, topic_id: str, mastery: float) -> dict:
+    """
+    Record a completed topic and award badges. Server-side and idempotent, so a
+    client cannot grant itself badges and a retried request cannot duplicate them.
+
+    Rules (moved verbatim from the old client code):
+      'First Steps' on the user's first completed topic,
+      'Master' at mastery >= 0.9, else 'Expert' at mastery >= 0.7.
+    Returns {"badges_awarded": [...], "completed_topics": n}.
+    """
+    awarded: list[str] = []
+    completed = 0
+    try:
+        db = get_supabase()
+        existing = db.table("user_progress").select("topic_id").eq("user_id", user_id).execute().data or []
+        if not any(r.get("topic_id") == topic_id for r in existing):
+            db.table("user_progress").insert({"user_id": user_id, "topic_id": topic_id}).execute()
+            existing.append({"topic_id": topic_id})
+        completed = len(existing)
+
+        wanted = []
+        if completed == 1:
+            wanted.append("First Steps")
+        if mastery >= BADGE_MASTER:
+            wanted.append("Master")
+        elif mastery >= BADGE_EXPERT:
+            wanted.append("Expert")
+
+        if wanted:
+            have = {r.get("badge_name") for r in (db.table("user_badges").select("badge_name").eq("user_id", user_id).execute().data or [])}
+            for badge in wanted:
+                if badge not in have:
+                    db.table("user_badges").insert({"user_id": user_id, "badge_name": badge}).execute()
+                    awarded.append(badge)
+        log.info("completion_persisted", user_id=user_id, topic_id=topic_id, badges=awarded, completed=completed)
+    except Exception as e:
+        log.error("completion_persist_failed", user_id=user_id, topic_id=topic_id, error=str(e))
+    return {"badges_awarded": awarded, "completed_topics": completed}

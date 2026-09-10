@@ -146,22 +146,19 @@ async def _invoke_structured(
 
 # ─── Retrieval ────────────────────────────────────────────────────────────────
 
-def get_topic_context(topic_name: str) -> dict:
+def get_topic_context(topic_name: str, topic_id: str | None = None) -> dict:
     """
     Retrieve the curriculum row for a topic from Supabase.
 
-    This grounds the LLM in the official course material, keeping the mentor
-    on-topic. Today this is a deterministic SQL lookup (structured retrieval);
-    Phase 3 adds pgvector similarity search over primary sources on top of it.
+    Selects by primary key when `topic_id` is known (the session always has it).
+    The title `ILIKE` match is only a fallback for callers without an id: it is
+    ambiguous ("Relativity" matches several topics) and should not be relied on.
     """
     try:
         supabase_client = get_supabase()
-        response = (
-            supabase_client.table("topics")
-            .select("*")
-            .ilike("title", f"%{topic_name}%")
-            .execute()
-        )
+        query = supabase_client.table("topics").select("*")
+        query = query.eq("id", topic_id) if topic_id else query.ilike("title", f"%{topic_name}%")
+        response = query.limit(1).execute()
         if response.data:
             topic_data = response.data[0]
             return {
@@ -192,6 +189,7 @@ async def build_tutor_messages(
     history: list,
     persona_id: str | None = None,
     past_memory: str | None = None,
+    topic_id: str | None = None,
 ) -> tuple[list[BaseMessage], str]:
     """
     Assemble the LangChain message list for one tutor turn.
@@ -200,7 +198,7 @@ async def build_tutor_messages(
     the curriculum row (deterministic anchor) and the mentor's own passages
     (semantic/hybrid, optional). Returns (messages, resolved_persona_id).
     """
-    rag_context = get_topic_context(topic)
+    rag_context = get_topic_context(topic, topic_id)
     resolved_persona_id = persona_id or rag_context.get("mentor_id") or "feynman"
     passages = await mentor_rag.retrieve_passages(resolved_persona_id, f"{topic}. {message}")
     system_prompt = build_persona_system_prompt(
@@ -227,6 +225,7 @@ async def evaluate_understanding(
     topic: str,
     history: list,
     persona_id: str | None = None,
+    topic_id: str | None = None,
 ) -> JudgeVerdict:
     """
     LLM-as-Judge: analyse the full Socratic dialogue transcript.
@@ -235,7 +234,7 @@ async def evaluate_understanding(
     JudgeVerdict (score in [0, 1], understood[], gaps[], reasoning).
     Raises AIServiceError if the model cannot produce a valid verdict.
     """
-    rag_context = get_topic_context(topic)
+    rag_context = get_topic_context(topic, topic_id)
     resolved_persona_id = persona_id or rag_context.get("mentor_id") or "feynman"
     persona = get_persona(resolved_persona_id)
     mentor_name = persona["name"] if persona else "the AI tutor"

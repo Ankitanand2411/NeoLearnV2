@@ -56,6 +56,8 @@ async def test_start_pauses_for_the_student(graph, monkeypatch):
     assert snap.values["phase"] == PHASE_TUTOR
     assert snap.values["theta"] == pytest.approx(mastery_to_theta(0.5))
     assert snap.values["past_memory"] == fakes.memory          # loaded once at init
+    [greeting] = snap.values["messages"]                        # the mentor opens; it is part of the transcript
+    assert greeting["role"] == "assistant" and "Albert Einstein" in greeting["content"] and "Special Relativity" in greeting["content"]
 
 
 async def test_each_turn_appends_user_and_assistant_messages(graph, monkeypatch):
@@ -63,7 +65,7 @@ async def test_each_turn_appends_user_and_assistant_messages(graph, monkeypatch)
     await start(graph)
     snap = await chat(graph, 2)
 
-    msgs = snap.values["messages"]
+    msgs = snap.values["messages"][1:]                          # skip the greeting
     assert [m["role"] for m in msgs] == ["user", "assistant", "user", "assistant"]
     assert msgs[0]["content"] == "student message 1"
     assert "fast train" in msgs[1]["content"]
@@ -89,7 +91,7 @@ async def test_blank_message_does_not_consume_a_turn(graph, monkeypatch):
     await graph.ainvoke(Command(resume={"message": "   "}), CFG)
     snap = await graph.aget_state(CFG)
     assert snap.values["student_turns"] == 0
-    assert snap.values["messages"] == []
+    assert len(snap.values["messages"]) == 1                    # only the greeting
 
 
 # ─── Judge → quiz ─────────────────────────────────────────────────────────────
@@ -106,7 +108,7 @@ async def test_evaluate_runs_judge_persists_and_serves_first_question(graph, mon
     assert v["verdict"]["score"] == 0.7 and v["verdict"]["gaps"] == ["simultaneity"]
     assert v["mastery"] == 0.7
     assert v["theta"] == pytest.approx(mastery_to_theta(0.7))
-    assert fakes.evaluations == [{"user_id": "user-1", "topic_id": "topic-1", "score": 0.7, "turns": 2 * MIN_STUDENT_TURNS}]
+    assert fakes.evaluations == [{"user_id": "user-1", "topic_id": "topic-1", "score": 0.7, "turns": 2 * MIN_STUDENT_TURNS + 1}]
 
     intr = interrupt_of(snap)
     assert intr["type"] == "question" and intr["index"] == 0 and intr["total"] == QUIZ_LENGTH
@@ -160,6 +162,8 @@ async def test_five_answers_complete_the_session(graph, monkeypatch):
 
     v = snap.values
     assert v["phase"] == PHASE_DONE and snap.next == ()
+    assert v["completion"]["badges_awarded"] == ["First Steps", "Expert"]   # awarded server-side in finish
+    assert fakes.completions == [{"user_id": "user-1", "topic_id": "topic-1", "mastery": v["mastery"]}]
     assert v["quiz_index"] == QUIZ_LENGTH
     assert len(v["questions"]) == QUIZ_LENGTH
     assert v["theta"] > theta_before                                     # 4/5 correct → ability rose

@@ -58,6 +58,9 @@ class SessionState(TypedDict, total=False):
     # LLM usage accumulated over the session (tokens, calls, estimated cost)
     usage: Annotated[dict[str, Any], add_usage]
 
+    # set by `finish`: badges awarded and completed-topic count
+    completion: dict[str, Any] | None
+
 
 def public_question(question: dict[str, Any]) -> dict[str, Any]:
     """The client-facing view of a question: everything except the answer key."""

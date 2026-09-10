@@ -178,7 +178,7 @@ def test_prompt_includes_passages_block_only_when_present():
 
 
 async def test_tutor_messages_carry_retrieved_passages(monkeypatch):
-    monkeypatch.setattr(ai_service, "get_topic_context", lambda topic: RAG)
+    monkeypatch.setattr(ai_service, "get_topic_context", lambda topic, topic_id=None: RAG)
     seen = {}
 
     async def fake_retrieve(mentor_id, query, k=None, **kw):
@@ -193,7 +193,7 @@ async def test_tutor_messages_carry_retrieved_passages(monkeypatch):
 
 
 async def test_tutor_messages_unchanged_when_nothing_retrieved(monkeypatch):
-    monkeypatch.setattr(ai_service, "get_topic_context", lambda topic: RAG)
+    monkeypatch.setattr(ai_service, "get_topic_context", lambda topic, topic_id=None: RAG)
 
     async def none(*a, **k):
         return []

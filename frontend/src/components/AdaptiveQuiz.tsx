@@ -17,7 +17,7 @@ import { sessionApi, type SessionView, type GradedAnswer } from '@/lib/api';
 interface AdaptiveQuizProps {
   session: SessionView;
   onSessionUpdate: (view: SessionView) => void;
-  onComplete: (newMastery: number) => void;
+  onComplete: (finalView: SessionView) => void;
 }
 
 const AdaptiveQuiz = ({ session, onSessionUpdate, onComplete }: AdaptiveQuizProps) => {
@@ -52,7 +52,7 @@ const AdaptiveQuiz = ({ session, onSessionUpdate, onComplete }: AdaptiveQuizProp
   const nextQuestion = () => {
     if (!pendingView) return;
     setSelectedAnswer(''); setEvaluation(null); setShowResult(false);
-    if (pendingView.completed) { onComplete(pendingView.mastery); return; }
+    if (pendingView.completed) { onComplete(pendingView); return; }
     onSessionUpdate(pendingView);
     setPendingView(null);
   };

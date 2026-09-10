@@ -36,6 +36,7 @@ START → init → await_student ⇄ tutor_reply
 - Generated questions live in graph state **with** their answer key; the API serialises them through `public_question()` which strips `correct_answer`. The key is revealed only inside the graded result. The quiz is no longer gameable from the browser.
 - Tutor tokens stream out of the graph with `stream_mode="messages"`; the SSE endpoint forwards them.
 - Thread id is `<user_id>:<session_id>`, built from the authenticated user, so sessions are user-scoped by construction.
+- The mentor's greeting is the first message of the server-side transcript, so the judge grades what the student saw. Completion (progress row, `First Steps` / `Expert` / `Master` badges) is recorded by the `finish` node, idempotently; the client only displays it.
 - If a node fails (model outage), the checkpoint stays before that node; the API reports `pending_step` and `/continue` (or retrying the same call) resumes from there.
 
 ## Mentor RAG (pgvector)
@@ -180,6 +181,5 @@ CI runs the same two commands on every push/PR touching `backend/` (`.github/wor
 - Two concurrent resumes of the same session are not serialised; the second will act on stale state. Fix: a per-thread lock (Redis) or optimistic check on checkpoint id.
 
 - Rate limiting is per-process and per-IP. Fix when running more than one instance: one shared limiter (Redis) keyed by JWT `sub`.
-- The `topics` table still has the static-quiz columns `quiz_question`, `quiz_options`, `quiz_correct_answer` and `video_description` from before question generation; nothing reads them. Drop them with a migration once you have confirmed no external consumer depends on them.
-- `get_topic_context` matches the curriculum row with `ILIKE` on the title; it should select by `topic_id`, which the session already has.
+- The `topics` table still has the static-quiz columns `quiz_question`, `quiz_options`, `quiz_correct_answer` and `video_description` from before question generation; nothing reads them. `supabase/migrations/20260911_drop_static_quiz_columns.sql` drops them; it is destructive, so run it deliberately.
 - The Supabase client is synchronous and blocks the event loop under load.
