@@ -63,7 +63,8 @@ def test_start_returns_view_without_answer_material(client, monkeypatch):
     v = r.json()
     assert v["phase"] == "tutor" and v["completed"] is False
     assert v["student_turns"] == 0 and v["can_evaluate"] is False
-    assert v["messages"] == [] and v["question"] is None and v["verdict"] is None
+    assert len(v["messages"]) == 1 and v["messages"][0]["role"] == "assistant"   # server-seeded greeting
+    assert v["question"] is None and v["verdict"] is None and v["completion"] is None
     assert v["quiz"] == {"index": 0, "total": QUIZ_LENGTH, "answers": []}
     assert len(v["session_id"]) == 32
 
@@ -99,7 +100,7 @@ def test_message_streams_tokens_then_done_event(client, monkeypatch):
     assert meta == [{"done": True, "student_turns": 1, "can_evaluate": False}]
 
     v = client.get(f"/api/v1/session/{sid}").json()
-    assert v["messages"] == [
+    assert v["messages"][1:] == [
         {"role": "user", "content": "Clocks slow down when moving"},
         {"role": "assistant", "content": TUTOR_REPLIES[0]},
     ]
@@ -183,6 +184,7 @@ def test_full_quiz_through_http(client, monkeypatch):
             assert "correct_answer" not in json.dumps(v["question"])
         else:
             assert v["phase"] == "done" and v["completed"] is True and v["question"] is None
+            assert v["completion"]["badges_awarded"]                            # badges come from the server now
 
     assert client.post(f"/api/v1/session/{sid}/answer", json={"answer": "x"}).status_code == 409
     final = client.get(f"/api/v1/session/{sid}").json()

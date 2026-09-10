@@ -31,6 +31,7 @@ from app.services.mastery_service import (
     theta_to_mastery,
     update_theta_eap,
 )
+from app.services.persona_registry import get_persona
 from app.services.telemetry import drain_usage, telemetry, timer, usage_from_message
 
 log = structlog.get_logger()
@@ -38,20 +39,35 @@ log = structlog.get_logger()
 
 # ─── Setup ────────────────────────────────────────────────────────────────────
 
+def greeting_for(persona_id: str | None, topic: str) -> str:
+    persona = get_persona(persona_id or "")
+    mentor = persona["name"] if persona else "your mentor"
+    return (
+        f"Greetings! I am {mentor}. Let us explore \"{topic}\" together. In your own words, tell me what "
+        "you currently understand about this topic. Do not be afraid to be incomplete — we shall build "
+        "understanding step by step."
+    )
+
+
 async def init(state: SessionState) -> dict:
-    """Load episodic memory once and enter the tutoring phase."""
+    """Load episodic memory, resolve the persona, open with the mentor's greeting, enter tutoring."""
     past_memory = await persistence.fetch_past_memory(state["user_id"], state.get("topic_id"))
     mastery = float(state.get("mastery", 0.0) or 0.0)
+    persona_id = state.get("persona_id") or ai_service.get_topic_context(state["topic"], state.get("topic_id")).get("mentor_id") or "feynman"
     return {
         "phase": PHASE_TUTOR,
         "past_memory": past_memory,
+        "persona_id": persona_id,
         "mastery": mastery,
         "theta": mastery_to_theta(mastery),
         "theta_sd": 1.0,
         "student_turns": state.get("student_turns", 0),
         "quiz_index": 0,
         "verdict": None,
+        "completion": None,
         "resume": None,
+        # The greeting is part of the transcript so the judge grades what the student actually saw.
+        "messages": [{"role": "assistant", "content": greeting_for(persona_id, state["topic"])}],
     }
 
 
@@ -86,6 +102,7 @@ async def tutor_reply(state: SessionState) -> dict:
         history=state.get("messages", []),
         persona_id=state.get("persona_id"),
         past_memory=state.get("past_memory"),
+        topic_id=state.get("topic_id"),
     )
     with timer() as t:
         reply = await ai_service._make_llm(temperature=0.7).ainvoke(lc_messages)
@@ -108,7 +125,7 @@ async def tutor_reply(state: SessionState) -> dict:
 async def judge(state: SessionState) -> dict:
     """LLM-as-Judge over the full transcript; persists mastery + memory; moves to the quiz."""
     verdict = await ai_service.evaluate_understanding(
-        state["topic"], state.get("messages", []), persona_id=state.get("persona_id")
+        state["topic"], state.get("messages", []), persona_id=state.get("persona_id"), topic_id=state.get("topic_id")
     )
     result = verdict.model_dump()
     await persistence.persist_evaluation(
@@ -190,5 +207,7 @@ def route_after_grade(state: SessionState) -> str:
 
 
 async def finish(state: SessionState) -> dict:
-    log.info("session_complete", topic=state["topic"], mastery=state.get("mastery"))
-    return {"phase": PHASE_DONE, "resume": None}
+    """Record the completion and award badges server-side (this used to happen in the browser)."""
+    completion = await persistence.persist_completion(state["user_id"], state["topic_id"], float(state.get("mastery", 0.0)))
+    log.info("session_complete", topic=state["topic"], mastery=state.get("mastery"), badges=completion["badges_awarded"])
+    return {"phase": PHASE_DONE, "completion": completion, "resume": None}

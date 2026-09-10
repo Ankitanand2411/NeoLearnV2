@@ -7,14 +7,7 @@ import { CheckCircle2, TrendingUp, ArrowRight, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 
-interface Topic {
-  id: string;
-  title: string;
-  description: string;
-  difficulty: string;
-  mentor_id: string;
-  estimated_time?: number;
-}
+import type { Topic } from '@/types/Topic';
 
 interface UserMastery { topic_id: string; mastery_level: number; }
 
@@ -72,7 +65,21 @@ const Learn = () => {
           .from('user_mastery')
           .select('topic_id, mastery_level')
           .eq('user_id', user.id);
-        setTopics(topicsData?.map((t) => ({ ...t, estimated_time: 30 })) || []);
+        setTopics(
+          (topicsData || []).map((t) => ({
+            id: t.id,
+            title: t.title,
+            description: t.description ?? '',
+            difficulty: t.difficulty ?? 'beginner',
+            icon: t.icon ?? '',
+            prerequisites: t.prerequisites ?? [],
+            estimated_time: 30,
+            mentor_id: t.mentor_id ?? undefined,
+            created_at: t.created_at,
+            explanation: t.explanation ?? undefined,
+            key_takeaway: t.key_takeaway ?? undefined,
+          })),
+        );
         setCompletedTopics(progressData?.map((p) => p.topic_id) || []);
         setUserMastery(masteryData || []);
       } catch {

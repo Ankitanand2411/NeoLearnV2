@@ -39,7 +39,7 @@ class FakeStructuredLLM:
 
 @pytest.fixture
 def no_db(monkeypatch):
-    monkeypatch.setattr(ai_service, "get_topic_context", lambda topic: CURRICULUM)
+    monkeypatch.setattr(ai_service, "get_topic_context", lambda topic, topic_id=None: CURRICULUM)
 
 
 def install_fake(monkeypatch, results):

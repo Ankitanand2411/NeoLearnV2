@@ -94,8 +94,7 @@ const TopicPlayer = () => {
           .single();
           
         if (topicData) {
-          // `mentor_id` exists in the database but not yet in the generated Supabase types.
-          const mentorId = (topicData as unknown as { mentor_id?: string | null }).mentor_id ?? null;
+          const mentorId = topicData.mentor_id ?? null;
           setTopic({ ...topicData, estimated_time: 30 });
           setUserMasteryLevel(masteryData?.mastery_level || 0);
 
@@ -107,16 +106,8 @@ const TopicPlayer = () => {
             mastery: masteryData?.mastery_level || 0,
           });
           setSession(started);
-
-          const mentorName = PERSONAS[mentorId || '']?.name || 'Your Mentor';
-          
-          // Seed initial Tutor message
-          setMessages([
-            {
-              role: 'assistant',
-              content: `Greetings! I am ${mentorName}. Let us explore "${topicData.title}" together. In your own words, tell me what you currently understand about this topic. Do not be afraid to be incomplete — we shall build understanding step by step.`,
-            },
-          ]);
+          // The transcript (including the mentor's greeting) is owned by the server.
+          setMessages(started.messages.map((m) => ({ role: m.role as ChatMsg['role'], content: m.content })));
         } else {
           toast.error('Topic not found');
           navigate('/learn');
@@ -196,38 +187,16 @@ const TopicPlayer = () => {
     }
   };
 
-  const handleQuizComplete = async (newMastery: number) => {
-    if (!user || !topic) return;
-    try {
-      const { error: progressError } = await supabase
-        .from('user_progress')
-        .insert({ user_id: user.id, topic_id: topic.id });
-      if (progressError && !progressError.message.includes('duplicate')) throw progressError;
-
-      const { data: existingProgress } = await supabase
-        .from('user_progress')
-        .select('id')
-        .eq('user_id', user.id);
-        
-      if (existingProgress && existingProgress.length === 1) {
-        await supabase.from('user_badges').insert({ user_id: user.id, badge_name: 'First Steps' });
-        toast.success('Badge earned: First Steps');
-      }
-      
-      if (newMastery >= 0.9) {
-        await supabase.from('user_badges').insert({ user_id: user.id, badge_name: 'Master' });
-        toast.success('Badge earned: Master');
-      } else if (newMastery >= 0.7) {
-        await supabase.from('user_badges').insert({ user_id: user.id, badge_name: 'Expert' });
-        toast.success('Badge earned: Expert');
-      }
-      
-      setUserMasteryLevel(newMastery);
-      toast.success(`Topic complete — Mastery: ${Math.round(newMastery * 100)}%`);
-      setTimeout(() => navigate('/learn'), 2500);
-    } catch {
-      toast.error('Something went wrong saving your final progress.');
+  const handleQuizComplete = (finalView: SessionView) => {
+    // Progress and badges are recorded by the server in the session's finish step;
+    // the client only announces what it was told.
+    setSession(finalView);
+    setUserMasteryLevel(finalView.mastery);
+    for (const badge of finalView.completion?.badges_awarded ?? []) {
+      toast.success(`Badge earned: ${badge}`);
     }
+    toast.success(`Topic complete — Mastery: ${Math.round(finalView.mastery * 100)}%`);
+    setTimeout(() => navigate('/learn'), 2500);
   };
 
   if (loading) {

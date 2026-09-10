@@ -109,6 +109,7 @@ def _view(session_id: str, snapshot) -> dict[str, Any]:
             "answers": v.get("answers", []),
         },
         "usage": v.get("usage") or {"llm_calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0},
+        "completion": v.get("completion"),
     }
 
 

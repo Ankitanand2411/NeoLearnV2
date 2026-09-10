@@ -115,7 +115,7 @@ async def test_structured_call_records_usage_from_raw_message(monkeypatch):
     parsed = JudgeVerdict(score=0.5, understood=[], gaps=[], reasoning="r")
     monkeypatch.setattr(ai_service, "_structured_llm",
                         lambda schema, temperature: _Runnable({"raw": raw, "parsed": parsed, "parsing_error": None}))
-    monkeypatch.setattr(ai_service, "get_topic_context", lambda topic: {"explanation": "e", "key_takeaway": "k", "mentor_id": "einstein"})
+    monkeypatch.setattr(ai_service, "get_topic_context", lambda topic, topic_id=None: {"explanation": "e", "key_takeaway": "k", "mentor_id": "einstein"})
 
     tm.begin_usage_capture()
     result = await ai_service.evaluate_understanding("t", [])
@@ -129,7 +129,7 @@ async def test_parsing_error_in_raw_triggers_retry_then_503_path(monkeypatch):
     raw = AIMessage(content="not json")
     monkeypatch.setattr(ai_service, "_structured_llm",
                         lambda schema, temperature: _Runnable({"raw": raw, "parsed": None, "parsing_error": ValueError("bad")}))
-    monkeypatch.setattr(ai_service, "get_topic_context", lambda topic: {"mentor_id": "einstein"})
+    monkeypatch.setattr(ai_service, "get_topic_context", lambda topic, topic_id=None: {"mentor_id": "einstein"})
     with pytest.raises(AIServiceError):
         await ai_service.evaluate_understanding("t", [])
     judge = tm.telemetry.snapshot()["llm"]["llm_judge"]
