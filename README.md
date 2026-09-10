@@ -78,6 +78,7 @@ To solidify learning, the user enters the quiz phase.
 | Token Validation | PyJWT + dynamic JWKS (ES256/RS256) |
 | Logging | structlog (structured key-value logs) |
 | Session orchestration | LangGraph StateGraph with Postgres checkpointing (human-in-the-loop interrupts) |
+| Retrieval | Supabase pgvector (HNSW) + full-text search, hybrid ranking via Reciprocal Rank Fusion; Gemini embeddings |
 | Containerization | Docker + docker-compose |
 
 ### Database & Infrastructure

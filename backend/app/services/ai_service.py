@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from app.core.config import settings
 from app.core.database import get_supabase
 from app.models.ai_schemas import AnswerVerdict, GeneratedQuestion, JudgeVerdict
+from app.services import mentor_rag
 from app.services.persona_registry import build_persona_system_prompt, get_persona
 
 log = structlog.get_logger()
@@ -162,7 +163,7 @@ def get_topic_context(topic_name: str) -> dict:
 
 # ─── Streaming Socratic Chat ───────────────────────────────────────────────────
 
-def build_tutor_messages(
+async def build_tutor_messages(
     message: str,
     topic: str,
     mastery: float,
@@ -174,16 +175,20 @@ def build_tutor_messages(
     Assemble the LangChain message list for one tutor turn.
 
     Shared by the legacy /chat stream and the session graph's tutor node so the
-    prompt cannot drift between them. Returns (messages, resolved_persona_id).
+    prompt cannot drift between them. Two retrieval steps feed the prompt:
+    the curriculum row (deterministic anchor) and the mentor's own passages
+    (semantic/hybrid, optional). Returns (messages, resolved_persona_id).
     """
     rag_context = get_topic_context(topic)
     resolved_persona_id = persona_id or rag_context.get("mentor_id") or "feynman"
+    passages = await mentor_rag.retrieve_passages(resolved_persona_id, f"{topic}. {message}")
     system_prompt = build_persona_system_prompt(
         persona_id=resolved_persona_id,
         topic=topic,
         rag_context=rag_context,
         mastery=mastery,
         past_memory=past_memory,
+        passages=passages,
     )
     messages: list[BaseMessage] = [SystemMessage(content=system_prompt)]
     for msg in history[-8:]:  # last 4 turns (8 messages)
@@ -213,7 +218,7 @@ async def stream_tutor_response(
     4. LangChain message list construction
     5. ChatGroq astream — yields SSE frames to the frontend
     """
-    messages, resolved_persona_id = build_tutor_messages(message, topic, mastery, history, persona_id, past_memory)
+    messages, resolved_persona_id = await build_tutor_messages(message, topic, mastery, history, persona_id, past_memory)
     log.info("stream_chat_start", topic=topic, persona=resolved_persona_id, mastery=round(mastery, 3))
 
     try:

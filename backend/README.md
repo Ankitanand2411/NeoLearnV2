@@ -37,6 +37,28 @@ START → init → await_student ⇄ tutor_reply
 - Thread id is `<user_id>:<session_id>`, built from the authenticated user, so sessions are user-scoped by construction.
 - If a node fails (model outage), the checkpoint stays before that node; the API reports `pending_step` and `/continue` (or retrying the same call) resumes from there.
 
+## Mentor RAG (pgvector)
+
+Two retrieval steps feed every tutor turn:
+
+1. **Curriculum row** (`topics`, deterministic): *what* to teach. Unchanged.
+2. **Mentor passages** (`mentor_passages`, semantic): *how this mentor would say it*. Public-domain writings of the mentors are chunked (~300 words, 50 overlap), embedded with Gemini (768 dims) and stored with a `vector(768)` column plus a generated `tsvector`. Per turn, the student's message is embedded and the top-k passages are retrieved with `match_mentor_passages_hybrid`, which fuses cosine rank and full-text rank with Reciprocal Rank Fusion in SQL, then placed in the system prompt with a "quote at most one short phrase, name the source" rule.
+
+Setup:
+
+```bash
+# 1. run supabase/migrations/20260910_mentor_passages.sql in the Supabase SQL editor
+# 2. set GEMINI_API_KEY, then ingest (dry-run first to see titles + chunk counts)
+python scripts/ingest_sources.py --all --dry-run
+python scripts/ingest_sources.py --all --yes
+# 3. measure
+python scripts/eval_retrieval.py --compare          # recall@k and MRR, vector vs hybrid
+```
+
+Only mentors with clearly public-domain primary texts are ingested (Darwin, Twain, Nightingale, Einstein's 1916 *Relativity*, Plato's *Apology* for Socrates). Feynman, Turing, Curie, Gandhi and Ramanujan fall back to prompt-only personas. Retrieval fails open: no key, no rows or any error leaves the prompt exactly as before.
+
+The SQL functions were verified against a local Postgres 16 + pgvector 0.6: cosine ordering, per-mentor isolation, RRF promoting a row both signals agree on, and keyword-only hits surfacing outside the vector candidate window.
+
 ## Key Technical Features
 
 - **IRT (Item Response Theory)** — Rasch (1PL) item model for adaptive difficulty selection, with a Bayesian EAP ability update after each answer. The response function accepts a discrimination parameter so per-item 2PL calibration can be added later.
@@ -72,6 +94,9 @@ Visit: http://localhost:8080/docs
 | `SUPABASE_URL` | Supabase project → Settings → API |
 | `SUPABASE_SERVICE_KEY` | Supabase project → Settings → API → service_role key |
 | `SUPABASE_JWT_SECRET` | Supabase project → Settings → API → JWT Secret |
+| `GEMINI_API_KEY` | Google AI Studio key, used only for embeddings (`gemini-embedding-001`). Optional: without it mentor-passage retrieval is skipped. |
+| `MENTOR_RAG_MODE` | `hybrid` (default: vector + keyword, RRF-fused), `vector`, or `off` |
+| `MENTOR_RAG_TOP_K` | Passages injected per tutor turn (default 3) |
 | `SUPABASE_DB_URL` | Postgres connection string for the LangGraph checkpointer (Settings → Database → Connection string, URI). Use the direct connection or the **session** pooler on port 5432, not the transaction pooler (6543). Optional: without it sessions are checkpointed in memory and lost on restart. |
 
 ## Endpoints
@@ -111,15 +136,18 @@ with an in-process fake. Coverage today:
 | `security` | HS256 with raw and base64 secrets, ES256 via (faked) JWKS, expiry, wrong key, missing `sub` |
 | routes | `/quiz/generate`, `/quiz/evaluate`, `/chat/evaluate` happy paths, 503 on model failure, background persistence calls, auth required |
 | session graph | Interrupt payloads, turn accounting, evaluate guard, judge → quiz transition, answer key never in an interrupt payload, five-answer completion with θ movement, failure leaves the graph parked before the failed node, resume across a new graph instance on the same checkpointer, thread isolation |
+| `mentor_rag` | Gutenberg boilerplate stripping, chunk size/overlap/coverage, hybrid vs vector RPC selection, fail-open on off/k=0/no mentor/blank query/no key/embedding error/RPC error, prompt block present only with passages and placed before the Socratic rules, tutor messages carry retrieved passages, golden-set recall@k and MRR, migration ⇄ code contract |
 | session routes | Start/get/ownership (404 for another user), SSE token stream + done event, 400 too early, 409 wrong phase, 503 then retry, full quiz over HTTP, `pending_step` + `/continue` recovery, auth required |
 
 CI runs the same two commands on every push/PR touching `backend/` (`.github/workflows/backend-ci.yml`).
 
 ## Known limitations (next up)
 
+- Mentor RAG retrieves on every tutor turn (one embedding call + one RPC, ~200–400 ms). Fix: cache by (mentor, normalised query) or retrieve every other turn.
+- Recall numbers in the README are a TODO until the corpus is ingested: run `scripts/eval_retrieval.py --compare` and paste the output.
+
 - Two concurrent resumes of the same session are not serialised; the second will act on stale state. Fix: a per-thread lock (Redis) or optimistic check on checkpoint id.
 - Legacy `/chat` and `/quiz/*` routes duplicate the session flow and should be removed once the frontend release is out.
 
 - Rate limiting is per-process and per-IP; the `REDIS_URL` storage is configured on the app limiter but the routers use their own in-memory limiters. Fix: one shared limiter keyed by JWT `sub`.
-- Retrieval is a deterministic `ILIKE` on topic title. Fix: pgvector similarity search over mentor primary sources on top of the curriculum row.
 - The Supabase client is synchronous and blocks the event loop under load.

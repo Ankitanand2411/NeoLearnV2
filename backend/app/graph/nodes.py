@@ -78,7 +78,7 @@ def route_after_student(state: SessionState) -> str:
 async def tutor_reply(state: SessionState) -> dict:
     """One Socratic turn. The LLM call streams token-by-token to the API via stream_mode='messages'."""
     message = str((state.get("resume") or {}).get("message", "")).strip()
-    lc_messages, persona_id = ai_service.build_tutor_messages(
+    lc_messages, persona_id = await ai_service.build_tutor_messages(
         message=message,
         topic=state["topic"],
         mastery=state.get("mastery", 0.0),
