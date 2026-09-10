@@ -8,9 +8,10 @@ Frontend (React/Vite → Vercel)
         ▼
 FastAPI Backend (Cloud Run / localhost:8080)
         │
-        ├── POST /api/v1/quiz/generate     → IRT adaptive question generation
-        ├── POST /api/v1/quiz/evaluate     → Answer eval + mastery update
-        ├── POST /api/v1/chat              → Streaming AI Tutor (SSE)
+        ├── POST /api/v1/session/start     → Start a checkpointed learning session
+        ├── POST /api/v1/session/{id}/message → Streaming Socratic tutor turn (SSE)
+        ├── POST /api/v1/session/{id}/evaluate → LLM-as-Judge + first adaptive question
+        ├── POST /api/v1/session/{id}/answer   → Grade against server-held key, IRT update
         └── GET  /api/v1/analytics/insights → Learning analytics
         │
         ▼
@@ -111,10 +112,6 @@ Visit: http://localhost:8080/docs
 | POST | `/api/v1/session/{id}/evaluate` | JWT | LLM-as-Judge over the transcript; returns verdict + first question |
 | POST | `/api/v1/session/{id}/answer` | JWT | Grade against the server-held key; returns result + next question |
 | POST | `/api/v1/session/{id}/continue` | JWT | Finish a step that failed mid-way (model outage) |
-| POST | `/api/v1/quiz/generate` | JWT | *Legacy*, client-driven quiz; removed next release |
-| POST | `/api/v1/quiz/evaluate` | JWT | *Legacy* |
-| POST | `/api/v1/chat` | JWT | *Legacy* streaming tutor |
-| POST | `/api/v1/chat/evaluate` | JWT | *Legacy* judge |
 | GET | `/api/v1/analytics/insights` | JWT | Learning analytics |
 
 ## Numbers
@@ -123,7 +120,7 @@ Every LLM call and HTTP request is measured (`app/services/telemetry.py`):
 
 - **Per session**: `GET /api/v1/session/{id}` includes `usage` — LLM calls, prompt/completion tokens and estimated cost accumulated in graph state, so it survives restarts.
 - **Per process**: `GET /api/v1/metrics` (JWT) — by purpose (`tutor`, `llm_judge`, `question_generation`, `answer_evaluation`, `tutor_stream`): count, p50/p95/max latency, tokens, `usage_reported_ratio`, cost; by route: count, p50/p95, 5xx count. In-memory, resets on restart, and says so.
-- **Logs**: one `llm_call` line per call (purpose, model, tokens, latency, cost) and `latency_ms` on every `response` line; the legacy stream also logs `tutor_stream_ttft` (time to first token).
+- **Logs**: one `llm_call` line per call (purpose, model, tokens, latency, cost) and `latency_ms` on every `response` line.
 
 How to produce the numbers for this section:
 
@@ -159,12 +156,12 @@ pytest -q
 ```
 
 The suite needs no credentials: `tests/conftest.py` sets fake environment
-variables and every external dependency (Groq, Supabase, Redis) is replaced
+variables and every external dependency (Groq, Gemini, Supabase, Postgres) is replaced
 with an in-process fake. Coverage today:
 
 | Area | What is verified |
 |---|---|
-| `mastery_service` | Item response function, band selection, mastery⇄θ mapping, EAP update direction/bounds/surprise-scaling, and a test proving the legacy Newton step was always clipped to ±0.5 |
+| `mastery_service` | Item response function, band selection, mastery⇄θ mapping, EAP update direction/bounds/surprise-scaling, and a test against a reference copy of the pre-EAP Newton step proving it was always clipped to ±0.5 |
 | `ai_schemas` / `ai_service` | Schema validation rules, one repair retry with the validation error appended, `AIServiceError` after repeated failure, exact-match short circuit |
 | `security` | HS256 with raw and base64 secrets, ES256 via (faked) JWKS, expiry, wrong key, missing `sub` |
 | routes | `/quiz/generate`, `/quiz/evaluate`, `/chat/evaluate` happy paths, 503 on model failure, background persistence calls, auth required |
@@ -181,7 +178,8 @@ CI runs the same two commands on every push/PR touching `backend/` (`.github/wor
 - Recall numbers in the README are a TODO until the corpus is ingested: run `scripts/eval_retrieval.py --compare` and paste the output.
 
 - Two concurrent resumes of the same session are not serialised; the second will act on stale state. Fix: a per-thread lock (Redis) or optimistic check on checkpoint id.
-- Legacy `/chat` and `/quiz/*` routes duplicate the session flow and should be removed once the frontend release is out.
 
-- Rate limiting is per-process and per-IP; the `REDIS_URL` storage is configured on the app limiter but the routers use their own in-memory limiters. Fix: one shared limiter keyed by JWT `sub`.
+- Rate limiting is per-process and per-IP. Fix when running more than one instance: one shared limiter (Redis) keyed by JWT `sub`.
+- The `topics` table still has the static-quiz columns `quiz_question`, `quiz_options`, `quiz_correct_answer` and `video_description` from before question generation; nothing reads them. Drop them with a migration once you have confirmed no external consumer depends on them.
+- `get_topic_context` matches the curriculum row with `ILIKE` on the title; it should select by `topic_id`, which the session already has.
 - The Supabase client is synchronous and blocks the event loop under load.

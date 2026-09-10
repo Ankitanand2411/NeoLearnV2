@@ -14,9 +14,7 @@ class Settings(BaseSettings):
     # not support the prepared statements the checkpointer uses. When unset,
     # sessions are checkpointed in memory and lost on restart (dev only).
     SUPABASE_DB_URL: str | None = None
-    YOUTUBE_API_KEY: str | None = None  # not used by the backend; optional
     ALLOWED_ORIGINS: str = "http://localhost:5173"
-    REDIS_URL: str | None = None
 
     # --- Mentor RAG (retrieval over the mentors' own public-domain writings) ---
     # Embeddings come from Gemini (Groq has no embedding models). Without a key

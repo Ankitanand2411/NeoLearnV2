@@ -8,7 +8,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.api.v1 import analytics, chat, metrics, personas, quiz, session
+from app.api.v1 import analytics, metrics, personas, session
 from app.core.config import settings
 from app.graph.graph import build_graph
 from app.services.telemetry import telemetry
@@ -24,10 +24,9 @@ structlog.configure(
 log = structlog.get_logger()
 
 # ─── Rate Limiter ─────────────────────────────────────────────────────────────
-limiter = Limiter(
-    key_func=get_remote_address,
-    storage_uri=settings.REDIS_URL if settings.REDIS_URL else "memory://"
-)
+# In-memory, per process. A shared store (Redis) only matters with >1 instance;
+# add it when a second instance exists, not before.
+limiter = Limiter(key_func=get_remote_address)
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 @asynccontextmanager
@@ -114,8 +113,6 @@ async def log_requests(request: Request, call_next):
 # ─── Routers ──────────────────────────────────────────────────────────────────
 API_PREFIX = "/api/v1"
 
-app.include_router(quiz.router, prefix=API_PREFIX)
-app.include_router(chat.router, prefix=API_PREFIX)
 app.include_router(analytics.router, prefix=API_PREFIX)
 app.include_router(personas.router, prefix=API_PREFIX)
 app.include_router(session.router, prefix=API_PREFIX)

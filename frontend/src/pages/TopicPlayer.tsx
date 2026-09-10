@@ -94,8 +94,7 @@ const TopicPlayer = () => {
           .single();
           
         if (topicData) {
-          // `mentor_id` exists in the database but not yet in the generated Supabase types.
-          const mentorId = (topicData as unknown as { mentor_id?: string | null }).mentor_id ?? null;
+          const mentorId = topicData.mentor_id ?? null;
           setTopic({ ...topicData, estimated_time: 30 });
           setUserMasteryLevel(masteryData?.mastery_level || 0);
 
