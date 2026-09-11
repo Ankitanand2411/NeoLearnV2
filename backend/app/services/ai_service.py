@@ -38,10 +38,10 @@ from app.services.telemetry import telemetry, timer, usage_from_message
 
 log = structlog.get_logger()
 
-GROQ_MODEL = "llama-3.1-8b-instant"
+GROQ_MODEL = settings.GROQ_MODEL  # configurable: Groq retires model names
 
 # "function_calling" = Groq tool use. Works on every Groq chat model, including
-# llama-3.1-8b-instant. "json_schema" is stricter but only supported on a subset
+# the configured Groq model. "json_schema" is stricter but only supported on a subset
 # of models, so we keep it opt-in.
 STRUCTURED_METHOD = "function_calling"
 STRUCTURED_ATTEMPTS = 2
