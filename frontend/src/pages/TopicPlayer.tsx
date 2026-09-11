@@ -154,6 +154,19 @@ const TopicPlayer = () => {
       });
       setSession((prev) => prev ? { ...prev, student_turns: done.student_turns, can_evaluate: done.can_evaluate } : prev);
     } catch (err) {
+      // The server parks a failed tutor step and refuses new messages until it is retried.
+      // Try once to finish it (/continue); on success render the reply, otherwise report.
+      try {
+        const view = await sessionApi.get(session.session_id);
+        if (view.pending_step) {
+          const resumed = await sessionApi.continue(session.session_id);
+          if (!resumed.pending_step) {
+            setSession(resumed);
+            setMessages(resumed.messages.map((m) => ({ role: m.role as ChatMsg['role'], content: m.content })));
+            return;
+          }
+        }
+      } catch { /* fall through to the error toast */ }
       toast.error(err instanceof Error ? err.message : 'Failed to get response from Socratic Tutor.');
       // Drop the empty assistant placeholder so the transcript matches the server.
       setMessages((prev) => (prev.length && prev[prev.length - 1].content === '' ? prev.slice(0, -1) : prev));

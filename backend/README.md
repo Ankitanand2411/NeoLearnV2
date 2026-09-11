@@ -107,6 +107,7 @@ Visit: http://localhost:8080/docs
 | `SUPABASE_URL` | Supabase project → Settings → API |
 | `SUPABASE_SERVICE_KEY` | Supabase project → Settings → API → service_role key |
 | `SUPABASE_JWT_SECRET` | Supabase project → Settings → API → JWT Secret |
+| `GROQ_MODEL` | Groq model id, default `llama-3.3-70b-versatile`. Groq retires models; if the tutor logs `model_not_found`, pick a current id from console.groq.com/docs/models |
 | `GEMINI_API_KEY` | Google AI Studio key, used only for embeddings (`gemini-embedding-001`). Optional: without it mentor-passage retrieval is skipped. |
 | `MENTOR_RAG_MODE` | `hybrid` (default: vector + keyword, RRF-fused), `vector`, or `off` |
 | `MENTOR_RAG_TOP_K` | Passages injected per tutor turn (default 3) |

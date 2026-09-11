@@ -164,3 +164,9 @@ async def test_wrong_answer_goes_to_llm_and_returns_verdict(monkeypatch):
 
     assert result is verdict
     assert "Student Answer: Mass" in fake.calls[0][0].content
+
+
+def test_groq_model_comes_from_settings(monkeypatch):
+    from app.core.config import settings
+    assert ai_service.GROQ_MODEL == settings.GROQ_MODEL
+    assert "llama-3.1-8b-instant" != settings.GROQ_MODEL            # the retired name is no longer the default

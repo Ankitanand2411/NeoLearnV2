@@ -209,7 +209,9 @@ def test_pending_step_is_visible_and_blocks_chat_until_continued(client, monkeyp
     assert v["phase"] == "tutor" and v["pending_step"] == "judge"
 
     with client.stream("POST", f"/api/v1/session/{sid}/message", json={"message": "hello?"}) as m:
-        assert m.status_code == 409                                     # finish the evaluation first
+        assert m.status_code == 409                                     # finish the parked step first
+        m.read()
+        assert "judge" in m.json()["detail"] and "/continue" in m.json()["detail"]
 
     r = client.post(f"/api/v1/session/{sid}/continue")
     assert r.status_code == 200

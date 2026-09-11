@@ -5,6 +5,10 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     GROQ_API_KEY: str
+    # Groq model for tutor, judge, question generation and grading. Groq retires
+    # models (llama-3.1-8b-instant returned 404 model_not_found in Sept 2026), so
+    # this is configuration, not code. Current list: https://console.groq.com/docs/models
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
     SUPABASE_URL: str
     SUPABASE_SERVICE_KEY: str
     SUPABASE_JWT_SECRET: str
@@ -31,11 +35,11 @@ class Settings(BaseSettings):
     MENTOR_EMBED_DIMENSIONS: int = 768
 
     # --- Cost estimation (USD per 1M tokens, by model) ---
-    # Defaults are Groq's published llama-3.1-8b-instant list prices at the time
-    # of writing. VERIFY against https://groq.com/pricing and override via env
-    # (JSON), e.g. LLM_PRICE_INPUT_PER_M='{"llama-3.1-8b-instant": 0.05}'.
-    LLM_PRICE_INPUT_PER_M: dict[str, float] = {"llama-3.1-8b-instant": 0.05, "default": 0.0}
-    LLM_PRICE_OUTPUT_PER_M: dict[str, float] = {"llama-3.1-8b-instant": 0.08, "default": 0.0}
+    # Defaults are Groq's published list prices at the time of writing. VERIFY
+    # against https://groq.com/pricing and override via env (JSON), e.g.
+    # LLM_PRICE_INPUT_PER_M='{"llama-3.3-70b-versatile": 0.59}'.
+    LLM_PRICE_INPUT_PER_M: dict[str, float] = {"llama-3.3-70b-versatile": 0.59, "llama-3.1-8b-instant": 0.05, "default": 0.0}
+    LLM_PRICE_OUTPUT_PER_M: dict[str, float] = {"llama-3.3-70b-versatile": 0.79, "llama-3.1-8b-instant": 0.08, "default": 0.0}
 
     @property
     def origins(self) -> List[str]:

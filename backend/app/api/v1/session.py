@@ -181,10 +181,10 @@ async def send_message(request: Request, session_id: str, body: MessageRequest, 
     snapshot = await _load(graph, user["id"], session_id)
     if snapshot.values.get("phase") != PHASE_TUTOR:
         raise HTTPException(status_code=409, detail="This session is no longer in the tutoring phase")
-    if _pending_step(snapshot):
+    if step := _pending_step(snapshot):
         raise HTTPException(
             status_code=409,
-            detail="An evaluation is pending for this session; retry it (or call /continue) before chatting further",
+            detail=f"The previous step ('{step}') did not finish; call /continue to retry it before sending another message",
         )
     config = _config(user["id"], session_id)
 
