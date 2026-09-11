@@ -36,7 +36,9 @@ class Settings(BaseSettings):
     def origins(self) -> List[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
 
-    model_config = {"env_file": ".env"}
+    # Ignore unknown keys in .env (e.g. PYTHON_VERSION, which belongs to Render)
+    # instead of refusing to start; unknown environment variables were already ignored.
+    model_config = {"env_file": ".env", "extra": "ignore"}
 
 
 settings = Settings()
