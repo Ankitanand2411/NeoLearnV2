@@ -41,12 +41,33 @@ async def lifespan(app: FastAPI):
     """
     if settings.SUPABASE_DB_URL:
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        from psycopg.rows import dict_row
+        from psycopg_pool import AsyncConnectionPool
 
-        async with AsyncPostgresSaver.from_conn_string(settings.SUPABASE_DB_URL) as saver:
-            await saver.setup()
-            app.state.session_graph = build_graph(saver)
-            log.info("session_graph_ready", checkpointer="postgres")
+        # A pool, not a single connection. `from_conn_string` opens one connection
+        # at startup and never reconnects; Supabase's pooler closes idle
+        # connections, so after a quiet stretch every checkpoint call failed with
+        # "the connection is closed". The pool checks each connection before
+        # handing it out (`check`) and retires idle ones (`max_idle`) before the
+        # server does, so the app survives idle gaps and restarts of the pooler.
+        pool = AsyncConnectionPool(
+            conninfo=settings.SUPABASE_DB_URL,
+            min_size=1,
+            max_size=settings.DB_POOL_MAX_SIZE,
+            max_idle=settings.DB_POOL_MAX_IDLE_SECONDS,
+            kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+            check=AsyncConnectionPool.check_connection,
+            open=False,
+        )
+        await pool.open(wait=True, timeout=30)
+        saver = AsyncPostgresSaver(pool)
+        await saver.setup()
+        app.state.session_graph = build_graph(saver)
+        log.info("session_graph_ready", checkpointer="postgres", pool_max=settings.DB_POOL_MAX_SIZE)
+        try:
             yield
+        finally:
+            await pool.close()
     else:
         from langgraph.checkpoint.memory import InMemorySaver
 

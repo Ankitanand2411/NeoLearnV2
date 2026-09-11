@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     # not support the prepared statements the checkpointer uses. When unset,
     # sessions are checkpointed in memory and lost on restart (dev only).
     SUPABASE_DB_URL: str | None = None
+    # Checkpointer connection pool. Keep max_size small on Supabase's free tier
+    # (pooler connection limits are low) and recycle idle connections before the
+    # pooler drops them.
+    DB_POOL_MAX_SIZE: int = 4
+    DB_POOL_MAX_IDLE_SECONDS: float = 120.0
     ALLOWED_ORIGINS: str = "http://localhost:5173"
 
     # --- Mentor RAG (retrieval over the mentors' own public-domain writings) ---
