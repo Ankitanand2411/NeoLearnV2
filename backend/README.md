@@ -72,6 +72,17 @@ The SQL functions were verified against a local Postgres 16 + pgvector 0.6: cosi
 - **Structured logging** — structlog with ISO timestamps
 - **Multi-stage Docker build** — lean runtime image, non-root user
 
+## Fresh database setup (new Supabase project)
+
+Run these in the Supabase SQL editor, in order; each is safe to re-run:
+
+1. `supabase/schema.sql` — tables (`topics`, `profiles`, `user_progress`, `user_badges`, `user_mastery`, `user_streaks`, `quiz_sessions`), RLS, and the `update_mastery_level` / `update_user_streak` functions.
+2. `supabase/migrations/20260725_mentor_topics.sql` — `mentor_id`, `explanation`, `key_takeaway` columns and the seeded topics.
+3. `supabase/migrations/20260912_user_memories.sql` — the session-memory table.
+4. `supabase/migrations/20260910_mentor_passages.sql` — the retrieval table and search functions (pgvector).
+
+Then create a **public** Storage bucket named `avatars` (profile pictures) and enable the Google provider under Authentication. The LangGraph `checkpoints*` tables are created by the backend itself on first start.
+
 ## Local Setup
 
 ```bash
