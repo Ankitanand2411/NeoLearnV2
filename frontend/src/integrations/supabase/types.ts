@@ -42,47 +42,6 @@ export type Database = {
         }
         Relationships: []
       }
-      quiz_sessions: {
-        Row: {
-          completed_at: string | null
-          created_at: string
-          id: string
-          questions_data: Json
-          score: number | null
-          topic_id: string
-          user_answers: Json | null
-          user_id: string
-        }
-        Insert: {
-          completed_at?: string | null
-          created_at?: string
-          id?: string
-          questions_data: Json
-          score?: number | null
-          topic_id: string
-          user_answers?: Json | null
-          user_id: string
-        }
-        Update: {
-          completed_at?: string | null
-          created_at?: string
-          id?: string
-          questions_data?: Json
-          score?: number | null
-          topic_id?: string
-          user_answers?: Json | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "quiz_sessions_topic_id_fkey"
-            columns: ["topic_id"]
-            isOneToOne: false
-            referencedRelation: "topics"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       topics: {
         Row: {
           created_at: string

@@ -186,31 +186,6 @@ BEGIN
     END IF;
 END $$;
 
--- Create quiz_sessions table
-CREATE TABLE IF NOT EXISTS public.quiz_sessions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    topic_id UUID NOT NULL REFERENCES public.topics(id) ON DELETE CASCADE,
-    questions_data JSONB NOT NULL,
-    user_answers JSONB,
-    score INTEGER,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    completed_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
-);
-
--- Enable RLS for quiz_sessions
-ALTER TABLE public.quiz_sessions ENABLE ROW LEVEL SECURITY;
-
-DO $$ 
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_policies 
-        WHERE tablename = 'quiz_sessions' AND policyname = 'Allow individual write access to quiz_sessions'
-    ) THEN
-        CREATE POLICY "Allow individual write access to quiz_sessions" ON public.quiz_sessions FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-    END IF;
-END $$;
-
 -- Create the leaderboard_top5 view
 CREATE OR REPLACE VIEW public.leaderboard_top5 AS
 SELECT 
