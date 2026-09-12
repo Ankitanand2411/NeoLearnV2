@@ -1,3 +1,3 @@
-from app.api.v1 import analytics, metrics, personas, session
+from app.api.v1 import metrics, session
 
-__all__ = ["analytics", "metrics", "personas", "session"]
+__all__ = ["metrics", "session"]

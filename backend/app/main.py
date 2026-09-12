@@ -8,7 +8,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.api.v1 import analytics, metrics, personas, session
+from app.api.v1 import metrics, session
 from app.core.config import settings
 from app.graph.graph import build_graph
 from app.services.telemetry import telemetry
@@ -83,7 +83,7 @@ app = FastAPI(
         "Adaptive learning backend powering NeoLearn. "
         "Features: Socratic AI tutoring with historical mentor personas (RAG-grounded via LangChain), "
         "LLM-as-Judge mastery evaluation, IRT-based adaptive quiz generation, "
-        "and personalized learning analytics."
+        "and per-session cost and latency telemetry."
     ),
     version="2.0.0",
     docs_url="/docs",
@@ -134,8 +134,6 @@ async def log_requests(request: Request, call_next):
 # ─── Routers ──────────────────────────────────────────────────────────────────
 API_PREFIX = "/api/v1"
 
-app.include_router(analytics.router, prefix=API_PREFIX)
-app.include_router(personas.router, prefix=API_PREFIX)
 app.include_router(session.router, prefix=API_PREFIX)
 app.include_router(metrics.router, prefix=API_PREFIX)
 

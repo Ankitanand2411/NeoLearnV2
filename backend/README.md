@@ -125,7 +125,6 @@ Visit: http://localhost:8080/docs
 | POST | `/api/v1/session/{id}/evaluate` | JWT | LLM-as-Judge over the transcript; returns verdict + first question |
 | POST | `/api/v1/session/{id}/answer` | JWT | Grade against the server-held key; returns result + next question |
 | POST | `/api/v1/session/{id}/continue` | JWT | Finish a step that failed mid-way (model outage) |
-| GET | `/api/v1/analytics/insights` | JWT | Learning analytics |
 
 ## Numbers
 
